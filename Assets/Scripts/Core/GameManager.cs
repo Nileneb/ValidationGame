@@ -83,6 +83,20 @@ public class GameManager : MonoBehaviour
         else
         {
             Debug.LogWarning("GameManager: Keine Regeln vom Server erhalten!");
+
+            // Fallback: Default-Regel erstellen
+            currentActiveRule = new RuleData
+            {
+                rule_id = "fallback",
+                question = "Searching for papers...",
+                threshold = 0.7f,
+                is_active = true
+            };
+
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.SetActiveRule(currentActiveRule.question);
+            }
         }
     }
 
@@ -100,6 +114,9 @@ public class GameManager : MonoBehaviour
 
         foreach (var job in jobs)
         {
+            // WICHTIG: Base64-Daten dekodieren!
+            job.DecodeData();
+
             jobQueue.Enqueue(job);
         }
 
@@ -129,11 +146,17 @@ public class GameManager : MonoBehaviour
 
         papersValidated++;
 
-        // Rule Matching durchführen
+        // Rule Matching durchführen (mit VoxelData statt nur Embedding)
         RuleMatcher.MatchResult result;
 
-        if (ruleMatcher != null && currentActiveRule != null && paper.embedding != null)
+        if (ruleMatcher != null && paper.jobData != null)
         {
+            // Neue Methode: Embeddings aus jobData nutzen
+            result = ruleMatcher.CheckMatch(paper.jobData, currentActiveRule);
+        }
+        else if (ruleMatcher != null && currentActiveRule != null && paper.embedding != null)
+        {
+            // Legacy-Fallback
             result = ruleMatcher.CheckMatch(paper.embedding, currentActiveRule);
         }
         else
@@ -169,11 +192,15 @@ public class GameManager : MonoBehaviour
         }
 
         // Result für Server-Submit speichern
+        // Job-ID aus jobData wenn verfügbar
+        string jobId = paper.jobId ?? $"job_{paper.paperId}_{paper.section}";
+        string ruleId = paper.jobData?.rule_id ?? currentActiveRule?.rule_id ?? "unknown";
+
         ValidationResult validationResult = new ValidationResult
         {
-            job_id = $"job_{paper.paperId}_{paper.section}",
+            job_id = jobId,
             paper_id = paper.paperId,
-            rule_id = currentActiveRule?.rule_id ?? "unknown",
+            rule_id = ruleId,
             is_match = result.is_match,
             similarity = result.similarity,
             confidence = result.similarity,

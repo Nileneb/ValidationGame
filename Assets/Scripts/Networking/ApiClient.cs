@@ -42,27 +42,60 @@ public class ApiClient : MonoBehaviour
     /// </summary>
     public IEnumerator FetchJobs(int limit, System.Action<List<VoxelData>> callback)
     {
-        string url = $"{serverUrl}/api/jobs/next?device_id={deviceId}&limit={limit}";
+
+
+        // URL mit Device-ID (erforderlich für Job-Zuweisung)
+        string url = $"{serverUrl}/api/jobs/next?device_id={UnityWebRequest.EscapeURL(deviceId)}&limit={limit}";
 
         if (logRequests) Debug.Log($"ApiClient: Fetching jobs from {url}");
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
+            // Timeout auf 30 Sekunden (BioBERT braucht Zeit beim ersten Laden)
+            request.timeout = 30;
+
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
             {
+
                 string json = request.downloadHandler.text;
 
-                if (logRequests) Debug.Log($"ApiClient: Jobs Response: {json.Substring(0, Mathf.Min(200, json.Length))}...");
+                if (logRequests)
+                {
+                    Debug.Log($"ApiClient: Jobs Response: {json.Substring(0, Mathf.Min(500, json.Length))}...");
+                }
 
-                JobsResponse response = JsonUtility.FromJson<JobsResponse>(json);
-                callback?.Invoke(response?.jobs ?? new List<VoxelData>());
+                try
+                {
+                    JobsResponse response = JsonUtility.FromJson<JobsResponse>(json);
+
+                    if (response != null && response.jobs != null)
+                    {
+                        Debug.Log($"ApiClient: {response.jobs.Count} Jobs erhalten");
+                        callback?.Invoke(response.jobs);
+                    }
+                    else
+                    {
+                        Debug.LogWarning("ApiClient: Keine Jobs verfügbar");
+                        callback?.Invoke(new List<VoxelData>());
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"ApiClient: JSON Parse Error: {e.Message}");
+                    callback?.Invoke(new List<VoxelData>());
+                }
             }
             else
             {
+
                 Debug.LogError($"ApiClient: Failed to fetch jobs: {request.error}");
+                Debug.LogError($"ApiClient: Response Code: {request.responseCode}");
+
+
                 callback?.Invoke(new List<VoxelData>());
+
             }
         }
     }
@@ -108,29 +141,58 @@ public class ApiClient : MonoBehaviour
 
     /// <summary>
     /// Holt aktive Regeln vom Server
+    /// WICHTIG: Endpoint ist /api/rules (nicht /api/rules/active!)
     /// </summary>
     public IEnumerator FetchActiveRules(System.Action<List<RuleData>> callback)
     {
-        string url = $"{serverUrl}/api/rules/active";
+        // KORREKTUR: Server bietet /api/rules, nicht /api/rules/active
+        string url = $"{serverUrl}/api/rules";
 
         if (logRequests) Debug.Log($"ApiClient: Fetching active rules from {url}");
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
+            // Timeout auf 30 Sekunden setzen (BioBERT braucht Zeit beim ersten Laden)
+            request.timeout = 30;
+
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
             {
                 string json = request.downloadHandler.text;
 
-                if (logRequests) Debug.Log($"ApiClient: Rules Response: {json.Substring(0, Mathf.Min(200, json.Length))}...");
+                if (logRequests)
+                {
+                    Debug.Log($"ApiClient: Rules Response: {json.Substring(0, Mathf.Min(500, json.Length))}...");
+                }
 
-                RulesResponse response = JsonUtility.FromJson<RulesResponse>(json);
-                callback?.Invoke(response?.rules ?? new List<RuleData>());
+                try
+                {
+                    RulesResponse response = JsonUtility.FromJson<RulesResponse>(json);
+
+                    // Null-Check und leere Liste handling
+                    if (response != null && response.rules != null)
+                    {
+                        Debug.Log($"ApiClient: {response.rules.Count} Regeln geladen");
+                        callback?.Invoke(response.rules);
+                    }
+                    else
+                    {
+                        Debug.LogWarning("ApiClient: Leere Rules-Response vom Server");
+                        callback?.Invoke(new List<RuleData>());
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"ApiClient: JSON Parse Error: {e.Message}");
+                    Debug.LogError($"ApiClient: Raw JSON: {json}");
+                    callback?.Invoke(new List<RuleData>());
+                }
             }
             else
             {
                 Debug.LogError($"ApiClient: Failed to fetch rules: {request.error}");
+                Debug.LogError($"ApiClient: Response Code: {request.responseCode}");
                 callback?.Invoke(new List<RuleData>());
             }
         }
@@ -185,7 +247,11 @@ public class RuleData
 {
     public string rule_id;
     public string question;
-    public float[] pos_embedding;
-    public float[] neg_embedding;
     public float threshold;
+    public bool is_active;
+
+    // Embeddings kommen NICHT von /api/rules, sondern mit Jobs!
+    // Diese werden bei Bedarf aus VoxelData gelesen
+    [System.NonSerialized] public float[] pos_embedding;
+    [System.NonSerialized] public float[] neg_embedding;
 }

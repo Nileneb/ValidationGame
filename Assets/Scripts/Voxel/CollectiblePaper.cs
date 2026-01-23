@@ -9,7 +9,13 @@ public class CollectiblePaper : MonoBehaviour
     // Paper-Daten
     public string paperId { get; private set; }
     public string section { get; private set; }
-    public float[] embedding { get; private set; }
+    public string jobId { get; private set; }
+
+    // Vollständige Job-Daten für Matching
+    public VoxelData jobData { get; private set; }
+
+    // Legacy (für Kompatibilität)
+    public float[] embedding => jobData?.section_embedding ?? jobData?.embedding;
 
     [Header("Effects")]
     [SerializeField] private GameObject collectEffectPrefab;
@@ -22,9 +28,10 @@ public class CollectiblePaper : MonoBehaviour
     {
         if (data == null) return;
 
+        jobData = data;
         paperId = data.paper_id;
-        section = data.section;
-        embedding = data.embedding;
+        section = data.section ?? $"section_{data.section_id}";
+        jobId = data.job_id;
     }
 
     void OnTriggerEnter(Collider other)

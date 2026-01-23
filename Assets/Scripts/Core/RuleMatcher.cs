@@ -23,11 +23,66 @@ public class RuleMatcher : MonoBehaviour
     }
 
     /// <summary>
-    /// Prüft ob ein Paper-Embedding zur aktiven Regel passt
+    /// Prüft Match zwischen Paper-Embedding und Regel
+    /// WICHTIG: Embeddings kommen jetzt aus VoxelData (Job), nicht aus RuleData!
+    /// </summary>
+    public MatchResult CheckMatch(VoxelData job, RuleData rule)
+    {
+        // Embeddings aus Job nutzen (nicht aus Rule!)
+        float[] paperEmbedding = job?.section_embedding ?? job?.embedding;
+        float[] posEmbedding = job?.pos_embedding;
+
+        if (paperEmbedding == null || posEmbedding == null)
+        {
+            Debug.LogWarning("RuleMatcher: Missing embeddings in job data!");
+            return new MatchResult
+            {
+                is_match = false,
+                similarity = 0f,
+                points = missPoints,
+                feedback = "⚠️ Daten unvollständig (+10)"
+            };
+        }
+
+        // Cosine Similarity berechnen
+        float similarity = CosineSimilarity(paperEmbedding, posEmbedding);
+
+        // Optional: Negative Similarity berücksichtigen
+        if (job.neg_embedding != null && job.neg_embedding.Length > 0)
+        {
+            float negSimilarity = CosineSimilarity(paperEmbedding, job.neg_embedding);
+            // Kombinierte Similarity: positiv - negativ
+            similarity = (similarity - negSimilarity + 1f) / 2f; // Normalisiert auf 0-1
+        }
+
+        // Threshold aus Job oder Rule
+        float threshold = job.threshold > 0 ? job.threshold : (rule?.threshold ?? 0.7f);
+
+        bool isMatch = similarity >= threshold;
+        int points = isMatch ? Mathf.RoundToInt(matchPoints * similarity) : missPoints;
+
+        // Feedback-Text mit Frage aus Job oder Rule
+        string question = !string.IsNullOrEmpty(job.question) ? job.question : (rule?.question ?? "Paper");
+
+        string feedback = isMatch
+            ? $"🎉 MATCH! {question} (+{points})"
+            : $"Weiter suchen... (Similarity: {similarity:F2}) (+{missPoints})";
+
+        return new MatchResult
+        {
+            is_match = isMatch,
+            similarity = similarity,
+            points = points,
+            feedback = feedback
+        };
+    }
+
+    /// <summary>
+    /// Legacy-Methode für Kompatibilität (falls embedding separat übergeben wird)
     /// </summary>
     public MatchResult CheckMatch(float[] paperEmbedding, RuleData rule)
     {
-        if (paperEmbedding == null || rule == null || rule.pos_embedding == null)
+        if (paperEmbedding == null || rule == null)
         {
             return new MatchResult
             {
@@ -38,33 +93,17 @@ public class RuleMatcher : MonoBehaviour
             };
         }
 
-        // Cosine Similarity mit positivem Embedding berechnen
-        float similarity = CosineSimilarity(paperEmbedding, rule.pos_embedding);
-
-        // Optional: Negative Similarity berücksichtigen
-        if (rule.neg_embedding != null && rule.neg_embedding.Length > 0)
+        // Für Legacy: Dummy-VoxelData mit Embedding erstellen
+        VoxelData dummyJob = new VoxelData
         {
-            float negSimilarity = CosineSimilarity(paperEmbedding, rule.neg_embedding);
-            // Kombinierte Similarity: positiv - negativ
-            similarity = (similarity - negSimilarity + 1f) / 2f; // Normalisiert auf 0-1
-        }
-
-        // Threshold-Check
-        bool isMatch = similarity >= rule.threshold;
-        int points = isMatch ? Mathf.RoundToInt(matchPoints * similarity) : missPoints;
-
-        // Feedback-Text generieren
-        string feedback = isMatch
-            ? $"🎉 MATCH! {rule.question} (+{points})"
-            : $"Weiter suchen... (Similarity: {similarity:F2}) (+{missPoints})";
-
-        return new MatchResult
-        {
-            is_match = isMatch,
-            similarity = similarity,
-            points = points,
-            feedback = feedback
+            section_embedding = paperEmbedding,
+            pos_embedding = rule.pos_embedding,
+            neg_embedding = rule.neg_embedding,
+            threshold = rule.threshold,
+            question = rule.question
         };
+
+        return CheckMatch(dummyJob, rule);
     }
 
     /// <summary>
