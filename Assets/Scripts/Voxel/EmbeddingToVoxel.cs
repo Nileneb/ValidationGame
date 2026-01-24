@@ -41,7 +41,7 @@ public static class EmbeddingToVoxel
 
         // Anzahl Wuerfel (20-100)
         int targetCount = Mathf.Clamp(Mathf.RoundToInt(cubeCount), 20, 100);
-        
+
         // 1. Erster Wuerfel bei Origin
         Vector3Int start = Vector3Int.zero;
         positions.Add(new VoxelPosition { x = start.x, y = start.y, z = start.z });
@@ -50,11 +50,11 @@ public static class EmbeddingToVoxel
         // 2. Baue Pyramiden-artig auf
         int attempts = 0;
         int maxAttempts = targetCount * 10;
-        
+
         while (positions.Count < targetCount && attempts < maxAttempts)
         {
             attempts++;
-            
+
             // Waehle zufaelligen existierenden Wuerfel
             int baseIndex = rng.Next(positions.Count);
             VoxelPosition baseCube = positions[baseIndex];
@@ -63,7 +63,7 @@ public static class EmbeddingToVoxel
             // Waehle zufaellige Richtung
             int dirIndex = rng.Next(6);
             Vector3Int newPos = basePos + DIRECTIONS[dirIndex];
-            
+
             // Pruefe ob Position frei ist
             if (!occupied.Contains(newPos))
             {
@@ -101,18 +101,18 @@ public static class EmbeddingToVoxel
 
         int third = embedding.Length / 3;
         float r = 0, g = 0, b = 0;
-        
+
         for (int i = 0; i < third; i++)
         {
             r += Mathf.Abs(embedding[i]);
             g += Mathf.Abs(embedding[i + third]);
             b += Mathf.Abs(embedding[i + third * 2]);
         }
-        
+
         r /= third; g /= third; b /= third;
         float maxVal = Mathf.Max(r, Mathf.Max(g, b));
         if (maxVal > 0.001f) { r /= maxVal; g /= maxVal; b /= maxVal; }
-        
+
         return new Color(0.3f + r * 0.7f, 0.3f + g * 0.7f, 0.3f + b * 0.7f);
     }
 

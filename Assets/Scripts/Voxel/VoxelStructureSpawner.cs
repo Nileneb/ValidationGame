@@ -392,7 +392,7 @@ public class VoxelStructureSpawner : MonoBehaviour
             Debug.Log($"  Voxel[{i}]: x={p.x}, y={p.y}, z={p.z}");
             if (p.x != 0 || p.y != 0 || p.z != 0) allZero = false;
         }
-        
+
         // PROBLEM: Alle Positionen sind 0,0,0!
         // Dann generiere ECHTE Positionen aus Embedding
         if (allZero || data.voxel_positions.Count < 3)
@@ -432,7 +432,7 @@ public class VoxelStructureSpawner : MonoBehaviour
             float px = pos.x * cubeSize;
             float py = pos.y * cubeSize;
             float pz = pos.z * cubeSize;
-            
+
             cube.transform.localPosition = new Vector3(px, py, pz);
             cube.transform.localScale = Vector3.one * cubeSize;
 
