@@ -14,7 +14,6 @@ public class GameManager : MonoBehaviour
     [SerializeField] private VoxelStructureSpawner voxelSpawner;
     [SerializeField] private RuleMatcher ruleMatcher;
     [SerializeField] private RulePreview rulePreview;
-    [SerializeField] private TrackGenerator trackGenerator;
     [SerializeField] private Transform player;
 
     [Header("Player Settings")]
@@ -78,8 +77,6 @@ public class GameManager : MonoBehaviour
             ruleMatcher = FindAnyObjectByType<RuleMatcher>();
         if (rulePreview == null)
             rulePreview = FindAnyObjectByType<RulePreview>();
-        if (trackGenerator == null)
-            trackGenerator = FindAnyObjectByType<TrackGenerator>();
 
         // PLAYER SPAWNEN!
         SpawnPlayer();
@@ -164,9 +161,6 @@ public class GameManager : MonoBehaviour
         {
             if (voxelSpawner != null)
                 voxelSpawner.SetPlayer(player);
-
-            if (trackGenerator != null)
-                trackGenerator.SetPlayer(player);
         }
     }
 

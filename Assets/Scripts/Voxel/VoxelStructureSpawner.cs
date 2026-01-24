@@ -49,6 +49,11 @@ public class VoxelData
         {
             section_embedding = DecodeBase64ToFloatArray(section_embedding_b64);
             embedding = section_embedding;  // Legacy-Alias
+            Debug.Log($"VoxelData.DecodeData: section_embedding dekodiert! Länge={section_embedding?.Length}, erste Werte: {(section_embedding != null && section_embedding.Length > 3 ? $"{section_embedding[0]:F3}, {section_embedding[1]:F3}, {section_embedding[2]:F3}" : "NULL")}");
+        }
+        else
+        {
+            Debug.LogWarning($"VoxelData.DecodeData: section_embedding_b64 ist LEER für {paper_id}!");
         }
 
         if (!string.IsNullOrEmpty(pos_embedding_b64))
@@ -83,7 +88,7 @@ public class VoxelData
         if (voxel_positions == null || voxel_positions.Count == 0)
         {
             // VERSUCHE ZUERST aus Embedding zu generieren!
-            GenerateVoxelsFromEmbedding(0.3f);
+            GenerateVoxelsFromEmbedding(0.85f);
         }
     }
 
@@ -105,13 +110,27 @@ public class VoxelData
 
     private List<VoxelPosition> ParseVoxelData(string jsonArray)
     {
-        // Erwartet Format: "[[0,0,0], [1,0,0], ...]"
+        // Erwartet Format: "[[0,0,0], [1,0,0], ...]" ODER "[[0,0,0,0.5], ...]" (mit density)
         var positions = new List<VoxelPosition>();
+
+        if (string.IsNullOrEmpty(jsonArray))
+        {
+            Debug.LogWarning("VoxelData: voxel_data ist leer");
+            return positions;
+        }
 
         try
         {
-            // Einfacher Parser für [[x,y,z], ...] Format
-            string cleaned = jsonArray.Trim('[', ']').Replace(" ", "");
+            // Einfacher Parser für [[x,y,z], ...] oder [[x,y,z,d], ...] Format
+            string cleaned = jsonArray.Trim().Trim('[', ']').Replace(" ", "");
+
+            // Leerer Array?
+            if (string.IsNullOrEmpty(cleaned))
+            {
+                Debug.LogWarning("VoxelData: voxel_data Array ist leer nach Bereinigung");
+                return positions;
+            }
+
             string[] groups = cleaned.Split(new string[] { "],[" }, System.StringSplitOptions.RemoveEmptyEntries);
 
             foreach (string group in groups)
@@ -119,18 +138,33 @@ public class VoxelData
                 string[] coords = group.Trim('[', ']').Split(',');
                 if (coords.Length >= 3)
                 {
-                    positions.Add(new VoxelPosition
+                    // Versuche float zu parsen (für Fälle wie "0.0" statt "0")
+                    float fx, fy, fz;
+                    if (float.TryParse(coords[0], System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out fx) &&
+                        float.TryParse(coords[1], System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out fy) &&
+                        float.TryParse(coords[2], System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out fz))
                     {
-                        x = int.Parse(coords[0]),
-                        y = int.Parse(coords[1]),
-                        z = int.Parse(coords[2])
-                    });
+                        positions.Add(new VoxelPosition
+                        {
+                            x = Mathf.RoundToInt(fx),
+                            y = Mathf.RoundToInt(fy),
+                            z = Mathf.RoundToInt(fz)
+                        });
+                    }
                 }
+            }
+
+            if (positions.Count == 0)
+            {
+                Debug.LogWarning($"VoxelData: Konnte keine Positionen parsen aus: {jsonArray.Substring(0, Mathf.Min(100, jsonArray.Length))}...");
             }
         }
         catch (System.Exception e)
         {
-            Debug.LogWarning($"VoxelData: Voxel parse error: {e.Message}, using default voxels");
+            Debug.LogWarning($"VoxelData: Voxel parse error: {e.Message}\nInput (first 100 chars): {jsonArray.Substring(0, Mathf.Min(100, jsonArray.Length))}");
         }
 
         return positions;
@@ -156,7 +190,7 @@ public class VoxelData
     /// <summary>
     /// Generiert Voxel-Positionen aus Embedding wenn keine voxel_data vorhanden
     /// </summary>
-    public void GenerateVoxelsFromEmbedding(float threshold = 0.3f)
+    public void GenerateVoxelsFromEmbedding(float cubeCount = 50f)
     {
         // Wenn bereits Voxel-Positionen existieren, nicht überschreiben
         if (voxel_positions != null && voxel_positions.Count > 0) return;
@@ -165,7 +199,7 @@ public class VoxelData
         float[] emb = section_embedding ?? embedding;
         if (emb != null && emb.Length >= 768)
         {
-            voxel_positions = EmbeddingToVoxel.ConvertToPositions(emb, threshold);
+            voxel_positions = EmbeddingToVoxel.ConvertToPositions(emb, cubeCount);
 
             // Farbe aus Embedding
             Color col = EmbeddingToVoxel.GetColorFromEmbedding(emb);
@@ -175,6 +209,35 @@ public class VoxelData
         {
             voxel_positions = GenerateDefaultVoxels();
         }
+    }
+
+    /// <summary>
+    /// Konvertiert VoxelGridData (neues Format aus ApiClient) zu VoxelPositions
+    /// </summary>
+    public void ImportFromVoxelGridData(VoxelGridData gridData)
+    {
+        if (gridData == null || gridData.voxels == null)
+        {
+            Debug.LogWarning("VoxelData: VoxelGridData ist null");
+            return;
+        }
+
+        voxel_positions = new List<VoxelPosition>();
+
+        foreach (float[] voxel in gridData.voxels)
+        {
+            if (voxel != null && voxel.Length >= 3)
+            {
+                voxel_positions.Add(new VoxelPosition
+                {
+                    x = Mathf.RoundToInt(voxel[0]),
+                    y = Mathf.RoundToInt(voxel[1]),
+                    z = Mathf.RoundToInt(voxel[2])
+                });
+            }
+        }
+
+        Debug.Log($"VoxelData: Importiert {voxel_positions.Count} Positionen aus VoxelGridData");
     }
 }
 
@@ -203,7 +266,7 @@ public class VoxelStructureSpawner : MonoBehaviour
     [SerializeField] private Material voxelMaterial;
 
     [Header("Settings")]
-    [SerializeField] private float cubeSize = 0.5f;
+    [SerializeField] private float cubeSize = 1f;  // 1 = normale Würfelgröße!
     [SerializeField] private float spawnDistance = 50f;
     [SerializeField] private float moveSpeed = 5f;
 
@@ -215,6 +278,13 @@ public class VoxelStructureSpawner : MonoBehaviour
     [SerializeField] private Transform player;
 
     private List<GameObject> activeStructures = new List<GameObject>();
+
+    void Awake()
+    {
+        // ERZWINGE diese Werte (Unity cached alte Inspector-Werte)
+        cubeSize = 1f;
+        Debug.Log($"VoxelStructureSpawner: cubeSize = {cubeSize}");
+    }
 
     /// <summary>
     /// Spawnt eine Voxel-Struktur aus JSON-String
@@ -236,16 +306,22 @@ public class VoxelStructureSpawner : MonoBehaviour
             return null;
         }
 
-        // Sicherstellen dass Voxel-Positionen existieren
-        if (data.voxel_positions == null || data.voxel_positions.Count == 0)
-        {
-            Debug.LogWarning($"VoxelStructureSpawner: Keine voxel_positions für {data.paper_id} - generiere aus Embedding!");
-            data.GenerateVoxelsFromEmbedding(0.3f);
-        }
+        // DEBUG: Was haben wir?
+        Debug.Log($"SpawnFromData: paper_id={data.paper_id}");
+        Debug.Log($"  section_embedding_b64: {(string.IsNullOrEmpty(data.section_embedding_b64) ? "LEER" : $"{data.section_embedding_b64.Length} chars")}");
+        Debug.Log($"  section_embedding: {(data.section_embedding == null ? "NULL" : $"{data.section_embedding.Length} floats")}");
+        Debug.Log($"  embedding: {(data.embedding == null ? "NULL" : $"{data.embedding.Length} floats")}");
 
-        if (data.voxel_positions == null || data.voxel_positions.Count == 0)
+        // IMMER aus Embedding generieren mit Pyramiden-Algorithmus!
+        float[] emb = data.section_embedding ?? data.embedding;
+        if (emb != null && emb.Length >= 768)
         {
-            Debug.LogError("VoxelStructureSpawner: Konnte keine Voxel-Positionen generieren!");
+            data.voxel_positions = EmbeddingToVoxel.ConvertToPositions(emb, 50f);  // 50 Würfel
+            Debug.Log($"VoxelStructureSpawner: Generiert {data.voxel_positions.Count} Voxels aus Embedding");
+        }
+        else
+        {
+            Debug.LogError($"VoxelStructureSpawner: Kein Embedding für {data.paper_id}! emb={emb}, length={emb?.Length}");
             return null;
         }
 
@@ -265,8 +341,8 @@ public class VoxelStructureSpawner : MonoBehaviour
         // Cubes spawnen
         SpawnCubes(structure.transform, data);
 
-        // Collider für Einsammeln hinzufügen
-        AddCollider(structure, data.voxel_positions.Count);
+        // Collider für Einsammeln hinzufügen (exakte Bounding Box)
+        AddCollider(structure, data);
 
         // Collectible Component
         CollectiblePaper collectible = structure.AddComponent<CollectiblePaper>();
@@ -289,13 +365,16 @@ public class VoxelStructureSpawner : MonoBehaviour
             cubePrefab = GameObject.CreatePrimitive(PrimitiveType.Cube);
             cubePrefab.SetActive(false);  // Template, nicht sichtbar
             cubePrefab.name = "AutoCubePrefab";
+            // Collider entfernen vom Template (Performance)
+            Collider col = cubePrefab.GetComponent<Collider>();
+            if (col != null) DestroyImmediate(col);
         }
 
         // EINFACH: Eine Farbe aus Embedding
         float[] emb = data.section_embedding ?? data.embedding;
         Color color = EmbeddingToVoxel.GetColorFromEmbedding(emb);
 
-        // Ein Material
+        // Ein Material (shared für alle Cubes dieser Struktur)
         Material mat = null;
         if (voxelMaterial != null)
         {
@@ -303,14 +382,58 @@ public class VoxelStructureSpawner : MonoBehaviour
             mat.color = color;
         }
 
+        Debug.Log($"SpawnCubes: Spawne {data.voxel_positions.Count} Cubes, cubeSize={cubeSize}");
+
+        // DEBUG: Erste 5 Positionen ausgeben
+        bool allZero = true;
+        for (int i = 0; i < Mathf.Min(5, data.voxel_positions.Count); i++)
+        {
+            var p = data.voxel_positions[i];
+            Debug.Log($"  Voxel[{i}]: x={p.x}, y={p.y}, z={p.z}");
+            if (p.x != 0 || p.y != 0 || p.z != 0) allZero = false;
+        }
+        
+        // PROBLEM: Alle Positionen sind 0,0,0!
+        // Dann generiere ECHTE Positionen aus Embedding
+        if (allZero || data.voxel_positions.Count < 3)
+        {
+            Debug.LogWarning("SpawnCubes: Alle Positionen sind 0,0,0! Generiere neu aus Embedding...");
+            float[] embForVoxels = data.section_embedding ?? data.embedding;
+            if (embForVoxels != null && embForVoxels.Length >= 768)
+            {
+                data.voxel_positions = EmbeddingToVoxel.ConvertToPositions(embForVoxels, 50f);  // 50 Würfel
+                Debug.Log($"SpawnCubes: NEU generiert: {data.voxel_positions.Count} Voxel");
+            }
+            else
+            {
+                // FALLBACK: Einfache Test-Struktur
+                Debug.LogWarning("SpawnCubes: Kein Embedding! Erstelle L-Form als Test...");
+                data.voxel_positions = new List<VoxelPosition>
+                {
+                    // L-Form
+                    new VoxelPosition { x = 0, y = 0, z = 0 },
+                    new VoxelPosition { x = 0, y = 1, z = 0 },
+                    new VoxelPosition { x = 0, y = 2, z = 0 },
+                    new VoxelPosition { x = 0, y = 3, z = 0 },
+                    new VoxelPosition { x = 1, y = 0, z = 0 },
+                    new VoxelPosition { x = 2, y = 0, z = 0 },
+                };
+            }
+        }
+
         foreach (var pos in data.voxel_positions)
         {
             GameObject cube = Instantiate(cubePrefab, parent);
-            cube.transform.localPosition = new Vector3(
-                pos.x * cubeSize,
-                pos.y * cubeSize,
-                pos.z * cubeSize
-            );
+
+            // WICHTIG: Cube aktivieren (Prefab könnte deaktiviert sein)
+            cube.SetActive(true);
+
+            // SIMPEL: Position = x,y,z direkt als Unity-Koordinaten
+            float px = pos.x * cubeSize;
+            float py = pos.y * cubeSize;
+            float pz = pos.z * cubeSize;
+            
+            cube.transform.localPosition = new Vector3(px, py, pz);
             cube.transform.localScale = Vector3.one * cubeSize;
 
             Renderer renderer = cube.GetComponent<Renderer>();
@@ -324,15 +447,50 @@ public class VoxelStructureSpawner : MonoBehaviour
         }
     }
 
-    void AddCollider(GameObject structure, int voxelCount)
+    void AddCollider(GameObject structure, VoxelData data)
     {
         BoxCollider collider = structure.AddComponent<BoxCollider>();
         collider.isTrigger = true;
 
-        // Collider-Größe basierend auf Voxel-Anzahl schätzen
-        float estimatedSize = Mathf.Pow(voxelCount, 1f / 3f) * cubeSize;
-        collider.size = new Vector3(estimatedSize * 2, estimatedSize * 2, estimatedSize * 2);
-        collider.center = new Vector3(estimatedSize / 2, estimatedSize / 2, estimatedSize / 2);
+        // Berechne exakte Bounding Box aus den Voxel-Positionen
+        if (data.voxel_positions != null && data.voxel_positions.Count > 0)
+        {
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
+            foreach (var pos in data.voxel_positions)
+            {
+                min.x = Mathf.Min(min.x, pos.x);
+                min.y = Mathf.Min(min.y, pos.y);
+                min.z = Mathf.Min(min.z, pos.z);
+                max.x = Mathf.Max(max.x, pos.x);
+                max.y = Mathf.Max(max.y, pos.y);
+                max.z = Mathf.Max(max.z, pos.z);
+            }
+
+            // Collider-Size = (max - min + 1) * cubeSize (+ 1 weil Würfel 1 Unit breit)
+            Vector3 size = new Vector3(
+                (max.x - min.x + 1) * cubeSize,
+                (max.y - min.y + 1) * cubeSize,
+                (max.z - min.z + 1) * cubeSize
+            );
+
+            // Center = Mitte der Bounding Box
+            Vector3 center = new Vector3(
+                (min.x + max.x) / 2f * cubeSize + cubeSize / 2f,
+                (min.y + max.y) / 2f * cubeSize + cubeSize / 2f,
+                (min.z + max.z) / 2f * cubeSize + cubeSize / 2f
+            );
+
+            collider.size = size;
+            collider.center = center;
+        }
+        else
+        {
+            // Fallback
+            collider.size = Vector3.one * cubeSize;
+            collider.center = Vector3.one * cubeSize / 2f;
+        }
 
         // WICHTIG: Rigidbody für Trigger-Kollision erforderlich!
         Rigidbody rb = structure.AddComponent<Rigidbody>();

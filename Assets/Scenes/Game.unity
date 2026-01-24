@@ -14,30 +14,30 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
-  m_Fog: 0
+  m_Fog: 1
   m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   m_FogMode: 3
-  m_FogDensity: 0.01
+  m_FogDensity: 0.083
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
   m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
   m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
   m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
-  m_AmbientIntensity: 1
+  m_AmbientIntensity: 0.87
   m_AmbientMode: 0
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
-  m_HaloStrength: 0.5
+  m_SkyboxMaterial: {fileID: 2100000, guid: 80712c66cf7e6fd40b3296f00851e6c2, type: 2}
+  m_HaloStrength: 0.638
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
-  m_HaloTexture: {fileID: 0}
+  m_HaloTexture: {fileID: 2800000, guid: f5bdc92a7e22ab149a3a2e0f0b07ab21, type: 3}
   m_SpotCookie: {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
   m_DefaultReflectionMode: 0
   m_DefaultReflectionResolution: 128
   m_ReflectionBounces: 1
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
-  m_Sun: {fileID: 0}
+  m_Sun: {fileID: 410087040}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -93,7 +93,7 @@ LightmapSettings:
     m_ExportTrainingData: 0
     m_TrainingDataDestination: TrainingData
     m_LightProbeSampleCountMultiplier: 4
-  m_LightingDataAsset: {fileID: 20201, guid: 0000000000000000f000000000000000, type: 0}
+  m_LightingDataAsset: {fileID: 112000000, guid: f0bcdb565c51c7d4b8f466c9008f8b44, type: 2}
   m_LightingSettings: {fileID: 0}
 --- !u!196 &4
 NavMeshSettings:
@@ -220,6 +220,7 @@ RectTransform:
   - {fileID: 1410524240}
   - {fileID: 885700926}
   - {fileID: 2028988309}
+  - {fileID: 1076401126}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -497,7 +498,7 @@ GameObject:
   - component: {fileID: 712933635}
   - component: {fileID: 712933634}
   - component: {fileID: 712933633}
-  - component: {fileID: 712933638}
+  - component: {fileID: 712933639}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -539,6 +540,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ApiClient
   serverUrl: http://127.0.0.1:8089
   deviceId: 
+  autoConnectSSE: 1
+  sseReconnectDelay: 5
+  sseHeartbeatTimeout: 30
+  voxelBuilder: {fileID: 712933639}
+  infoPanel: {fileID: 1076401127}
   logRequests: 1
 --- !u!114 &712933635
 MonoBehaviour:
@@ -570,7 +576,6 @@ MonoBehaviour:
   voxelSpawner: {fileID: 712933633}
   ruleMatcher: {fileID: 712933635}
   rulePreview: {fileID: 1512958950}
-  trackGenerator: {fileID: 712933638}
   player: {fileID: 3909435548160090199, guid: 5d0df337882051042998d388bf71ac28, type: 3}
   autoSpawnPlayer: 1
   playerSpawnPosition: {x: 0, y: 1, z: 0}
@@ -593,7 +598,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &712933638
+--- !u!114 &712933639
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -602,15 +607,50 @@ MonoBehaviour:
   m_GameObject: {fileID: 712933632}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ab01173d8514eb64997d46a54ab15f94, type: 3}
+  m_Script: {fileID: 11500000, guid: 5c4f3d779d433c3488274dc3e216db35, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TrackGenerator
-  trackSegmentPrefab: {fileID: 1927289017533076622, guid: c37180ae9fac8e44a84c73722cc8baa5, type: 3}
-  segmentLength: 20
-  segmentWidth: 10
-  visibleSegments: 5
-  autoCreateSegments: 1
-  player: {fileID: 3909435548160090199, guid: 5d0df337882051042998d388bf71ac28, type: 3}
+  m_EditorClassIdentifier: Assembly-CSharp::VoxelMeshBuilder
+  voxelSize: 1
+  voxelMaterial: {fileID: 2100000, guid: c0201358304b3f04c91161f1acb6902b, type: 2}
+  paperMaterial: {fileID: 2100000, guid: 7d962c3ea7c882247aefc467ef9661a7, type: 2}
+  densityGradient:
+    serializedVersion: 2
+    key0: {r: 1, g: 1, b: 1, a: 1}
+    key1: {r: 1, g: 1, b: 1, a: 0.5529412}
+    key2: {r: 0, g: 0, b: 0, a: 0}
+    key3: {r: 0, g: 0, b: 0, a: 0}
+    key4: {r: 0, g: 0, b: 0, a: 0}
+    key5: {r: 0, g: 0, b: 0, a: 0}
+    key6: {r: 0, g: 0, b: 0, a: 0}
+    key7: {r: 0, g: 0, b: 0, a: 0}
+    ctime0: 17348
+    ctime1: 21974
+    ctime2: 0
+    ctime3: 0
+    ctime4: 0
+    ctime5: 0
+    ctime6: 0
+    ctime7: 0
+    atime0: 13107
+    atime1: 15806
+    atime2: 0
+    atime3: 0
+    atime4: 0
+    atime5: 0
+    atime6: 0
+    atime7: 0
+    m_Mode: 0
+    m_ColorSpace: -1
+    m_NumColorKeys: 2
+    m_NumAlphaKeys: 2
+  useCombinedMesh: 1
+  maxVoxelsPerMesh: 2000
+  voxelSpacing: 0.8612
+  showDebugLogs: 1
+  positiveMatchColor: {r: 0.2, g: 0.9, b: 0.3, a: 1}
+  negativeMatchColor: {r: 0.9, g: 0.2, b: 0.2, a: 1}
+  neutralColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  colorTransitionDuration: 0.5
 --- !u!1 &832575517
 GameObject:
   m_ObjectHideFlags: 0
@@ -824,6 +864,105 @@ CanvasRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1045214435}
+  m_CullTransparentMesh: 1
+--- !u!1 &1076401125
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1076401126}
+  - component: {fileID: 1076401129}
+  - component: {fileID: 1076401128}
+  - component: {fileID: 1076401127}
+  m_Layer: 5
+  m_Name: infoPanel
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1076401126
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076401125}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 269483567}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: -460.91168, y: -235.26811}
+  m_SizeDelta: {x: -921.8234, y: -470.5363}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1076401127
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076401125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4748eaa45817a8f468d8b6b3184ddb8b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PaperInfoPanel
+  titleText: {fileID: 0}
+  paperIdText: {fileID: 0}
+  statsText: {fileID: 0}
+  timestampText: {fileID: 0}
+  thumbnailImage: {fileID: 0}
+  defaultThumbnail: {fileID: 0}
+  rulesContainer: {fileID: 0}
+  ruleItemPrefab: {fileID: 0}
+  panelAnimator: {fileID: 0}
+  showAnimTrigger: Show
+  autoHideDelay: 0
+--- !u!114 &1076401128
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076401125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 0.392}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
+  m_Type: 1
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &1076401129
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076401125}
   m_CullTransparentMesh: 1
 --- !u!1 &1090519943
 GameObject:
@@ -1224,11 +1363,22 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraFollow
   player: {fileID: 3909435548160090199, guid: 5d0df337882051042998d388bf71ac28, type: 3}
-  distance: 5
-  height: 3
-  shoulderOffset: 1
+  distance: 3.11
+  height: 2.75
+  shoulderOffset: 0.43
   switchShoulder: 0
-  smoothTime: 0.2
+  positionSmoothTime: 0.1
+  rotationSmoothTime: 0.05
+  enableMouseLook: 1
+  mouseSensitivity: 2
+  maxHorizontalAngle: 60
+  maxVerticalAngle: 30
+  lookResetSpeed: 3
+  autoResetLook: 1
+  enableZoom: 1
+  minDistance: 0.05
+  maxDistance: 15
+  zoomSpeed: 2
 --- !u!1 &1410524237
 GameObject:
   m_ObjectHideFlags: 0
@@ -1401,7 +1551,7 @@ MonoBehaviour:
   rotationSpeed: 20
   voxelThreshold: 0.3
   targetImage: {fileID: 2028988307}
-  renderTextureSize: 256
+  renderTextureSize: 512
   previewPosition: {x: 100, y: 100, z: 100}
 --- !u!4 &1512958951
 Transform:

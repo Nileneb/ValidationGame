@@ -13,9 +13,9 @@ public class RulePreview : MonoBehaviour
     [SerializeField] private Material voxelMaterial;
 
     [Header("Preview Settings")]
-    [SerializeField] private float cubeSize = 0.3f;
+    [SerializeField] private float cubeSize = 1f;
     [SerializeField] private float rotationSpeed = 20f;
-    [SerializeField] private float voxelThreshold = 0.3f;
+    [SerializeField] private float voxelCount = 30f;  // Anzahl Würfel für Preview
 
     [Header("Render Settings")]
     [SerializeField] private RawImage targetImage;
@@ -27,6 +27,14 @@ public class RulePreview : MonoBehaviour
     private RenderTexture renderTexture;
     private string currentRuleId;
     private List<GameObject> voxelCubes = new List<GameObject>();
+
+    void Awake()
+    {
+        // ERZWINGE diese Werte (Unity cached alte Inspector-Werte)
+        cubeSize = 1f;
+        voxelCount = 30f;
+        Debug.Log($"RulePreview: cubeSize={cubeSize}, voxelCount={voxelCount}");
+    }
 
     void Start()
     {
@@ -84,8 +92,8 @@ public class RulePreview : MonoBehaviour
 
         currentRuleId = ruleId;
 
-        // Embedding zu Voxel konvertieren
-        List<VoxelPosition> positions = EmbeddingToVoxel.ConvertToPositions(posEmbedding, voxelThreshold);
+        // Embedding zu Voxel konvertieren (Pyramiden-Algorithmus)
+        List<VoxelPosition> positions = EmbeddingToVoxel.ConvertToPositions(posEmbedding, voxelCount);
         positions = EmbeddingToVoxel.CenterPositions(positions);
 
         // Farbe aus Embedding
@@ -117,6 +125,8 @@ public class RulePreview : MonoBehaviour
                 Destroy(cube.GetComponent<Collider>());
             }
 
+            // WICHTIG: Cube aktivieren (Prefab könnte deaktiviert sein)
+            cube.SetActive(true);
             cube.name = "PreviewVoxel";
             cube.transform.localPosition = new Vector3(
                 pos.x * cubeSize,
