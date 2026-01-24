@@ -82,7 +82,8 @@ public class VoxelData
         // Fallback: Leere Voxel-Liste wenn keine Daten
         if (voxel_positions == null || voxel_positions.Count == 0)
         {
-            voxel_positions = GenerateDefaultVoxels();
+            // VERSUCHE ZUERST aus Embedding zu generieren!
+            GenerateVoxelsFromEmbedding(0.3f);
         }
     }
 
@@ -151,6 +152,30 @@ public class VoxelData
         }
         return positions;
     }
+
+    /// <summary>
+    /// Generiert Voxel-Positionen aus Embedding wenn keine voxel_data vorhanden
+    /// </summary>
+    public void GenerateVoxelsFromEmbedding(float threshold = 0.3f)
+    {
+        // Wenn bereits Voxel-Positionen existieren, nicht überschreiben
+        if (voxel_positions != null && voxel_positions.Count > 0) return;
+
+        // Embedding vorhanden?
+        float[] emb = section_embedding ?? embedding;
+        if (emb != null && emb.Length >= 768)
+        {
+            voxel_positions = EmbeddingToVoxel.ConvertToPositions(emb, threshold);
+
+            // Farbe aus Embedding
+            Color col = EmbeddingToVoxel.GetColorFromEmbedding(emb);
+            color = new ColorData { r = col.r, g = col.g, b = col.b };
+        }
+        else
+        {
+            voxel_positions = GenerateDefaultVoxels();
+        }
+    }
 }
 
 [System.Serializable]
@@ -205,11 +230,26 @@ public class VoxelStructureSpawner : MonoBehaviour
     /// </summary>
     public GameObject SpawnFromData(VoxelData data)
     {
-        if (data == null || data.voxel_positions == null)
+        if (data == null)
         {
-            Debug.LogError("VoxelStructureSpawner: Ungültige Voxel-Daten!");
+            Debug.LogError("VoxelStructureSpawner: data ist NULL!");
             return null;
         }
+
+        // Sicherstellen dass Voxel-Positionen existieren
+        if (data.voxel_positions == null || data.voxel_positions.Count == 0)
+        {
+            Debug.LogWarning($"VoxelStructureSpawner: Keine voxel_positions für {data.paper_id} - generiere aus Embedding!");
+            data.GenerateVoxelsFromEmbedding(0.3f);
+        }
+
+        if (data.voxel_positions == null || data.voxel_positions.Count == 0)
+        {
+            Debug.LogError("VoxelStructureSpawner: Konnte keine Voxel-Positionen generieren!");
+            return null;
+        }
+
+        Debug.Log($"VoxelStructureSpawner: Spawne {data.voxel_positions.Count} Voxels für {data.paper_id}");
 
         // Parent-Objekt erstellen
         GameObject structure = new GameObject($"Paper_{data.paper_id}_{data.section}");
@@ -242,18 +282,25 @@ public class VoxelStructureSpawner : MonoBehaviour
 
     void SpawnCubes(Transform parent, VoxelData data)
     {
+        // Auto-create cube prefab wenn nicht zugewiesen
         if (cubePrefab == null)
         {
-            Debug.LogError("VoxelStructureSpawner: Kein Cube Prefab zugewiesen!");
-            return;
+            Debug.LogWarning("VoxelStructureSpawner: Kein Cube Prefab - erstelle automatisch!");
+            cubePrefab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cubePrefab.SetActive(false);  // Template, nicht sichtbar
+            cubePrefab.name = "AutoCubePrefab";
         }
 
-        // Material mit Farbe erstellen
-        Material instanceMaterial = null;
-        if (voxelMaterial != null && data.color != null)
+        // EINFACH: Eine Farbe aus Embedding
+        float[] emb = data.section_embedding ?? data.embedding;
+        Color color = EmbeddingToVoxel.GetColorFromEmbedding(emb);
+
+        // Ein Material
+        Material mat = null;
+        if (voxelMaterial != null)
         {
-            instanceMaterial = new Material(voxelMaterial);
-            instanceMaterial.color = new Color(data.color.r, data.color.g, data.color.b);
+            mat = new Material(voxelMaterial);
+            mat.color = color;
         }
 
         foreach (var pos in data.voxel_positions)
@@ -266,14 +313,13 @@ public class VoxelStructureSpawner : MonoBehaviour
             );
             cube.transform.localScale = Vector3.one * cubeSize;
 
-            // Material zuweisen
-            if (instanceMaterial != null)
+            Renderer renderer = cube.GetComponent<Renderer>();
+            if (renderer != null)
             {
-                Renderer renderer = cube.GetComponent<Renderer>();
-                if (renderer != null)
-                {
-                    renderer.material = instanceMaterial;
-                }
+                if (mat != null)
+                    renderer.material = mat;
+                else
+                    renderer.material.color = color;
             }
         }
     }
@@ -287,6 +333,11 @@ public class VoxelStructureSpawner : MonoBehaviour
         float estimatedSize = Mathf.Pow(voxelCount, 1f / 3f) * cubeSize;
         collider.size = new Vector3(estimatedSize * 2, estimatedSize * 2, estimatedSize * 2);
         collider.center = new Vector3(estimatedSize / 2, estimatedSize / 2, estimatedSize / 2);
+
+        // WICHTIG: Rigidbody für Trigger-Kollision erforderlich!
+        Rigidbody rb = structure.AddComponent<Rigidbody>();
+        rb.isKinematic = true;  // Keine Physik, nur Trigger
+        rb.useGravity = false;
     }
 
     void Update()

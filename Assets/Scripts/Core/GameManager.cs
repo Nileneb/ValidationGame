@@ -1,42 +1,45 @@
 // Scripts/Core/GameManager.cs
-// Zentrale Spiellogik - Singleton Pattern
-// Verwaltet Jobs, Matching, Punkte und Server-Kommunikation
+// Zentrale Spiellogik - VEREINFACHT
+// Nur ApiClient, VoxelSpawner, RuleMatcher - KEIN SCHNICKSCHNACK
 
 using UnityEngine;
 using System.Collections.Generic;
 
 public class GameManager : MonoBehaviour
 {
-    // Singleton Instance
     public static GameManager Instance { get; private set; }
 
     [Header("References")]
     [SerializeField] private ApiClient apiClient;
     [SerializeField] private VoxelStructureSpawner voxelSpawner;
     [SerializeField] private RuleMatcher ruleMatcher;
+    [SerializeField] private RulePreview rulePreview;
+    [SerializeField] private TrackGenerator trackGenerator;
+    [SerializeField] private Transform player;
+
+    [Header("Player Settings")]
+    [SerializeField] private bool autoSpawnPlayer = true;
+    [SerializeField] private Vector3 playerSpawnPosition = new Vector3(0, 1, 0);
 
     [Header("Game State")]
     [SerializeField] private int totalPoints = 0;
-    [SerializeField] private int papersValidated = 0;
     [SerializeField] private int matchesFound = 0;
 
     [Header("Timing")]
     [SerializeField] private float jobFetchInterval = 30f;
-    [SerializeField] private float resultSubmitInterval = 15f;
     [SerializeField] private float spawnChancePerSecond = 0.5f;
 
-    // Aktive Regel für Matching
+    // Aktive Regel
     private RuleData currentActiveRule;
 
-    // Queue für eingehende Jobs
+    // Job Queue
     private Queue<VoxelData> jobQueue = new Queue<VoxelData>();
 
-    // Pending Results für Server-Submit
+    // Pending Results
     private List<ValidationResult> pendingResults = new List<ValidationResult>();
 
     void Awake()
     {
-        // Singleton Setup
         if (Instance == null)
         {
             Instance = this;
@@ -47,6 +50,8 @@ public class GameManager : MonoBehaviour
             Destroy(gameObject);
             return;
         }
+
+        FindReferences();
     }
 
     void Start()
@@ -57,24 +62,121 @@ public class GameManager : MonoBehaviour
             StartCoroutine(apiClient.FetchActiveRules(OnRulesLoaded));
         }
 
-        // Initiale Jobs holen
+        // Jobs holen
         FetchMoreJobs();
-
-        // Periodisch neue Jobs holen
         InvokeRepeating(nameof(FetchMoreJobs), 10f, jobFetchInterval);
+        InvokeRepeating(nameof(SubmitPendingResults), 5f, 15f);
+    }
 
-        // Periodisch Results submitten
-        InvokeRepeating(nameof(SubmitPendingResults), 5f, resultSubmitInterval);
+    private void FindReferences()
+    {
+        if (apiClient == null)
+            apiClient = FindAnyObjectByType<ApiClient>();
+        if (voxelSpawner == null)
+            voxelSpawner = FindAnyObjectByType<VoxelStructureSpawner>();
+        if (ruleMatcher == null)
+            ruleMatcher = FindAnyObjectByType<RuleMatcher>();
+        if (rulePreview == null)
+            rulePreview = FindAnyObjectByType<RulePreview>();
+        if (trackGenerator == null)
+            trackGenerator = FindAnyObjectByType<TrackGenerator>();
+
+        // PLAYER SPAWNEN!
+        SpawnPlayer();
+
+        // Kamera Setup
+        SetupCamera();
+    }
+
+    /// <summary>
+    /// Richtet die Kamera ein, dem Spieler zu folgen
+    /// </summary>
+    private void SetupCamera()
+    {
+        if (player == null) return;
+
+        Camera mainCam = Camera.main;
+        if (mainCam == null) return;
+
+        // CameraFollow hinzufügen oder finden
+        CameraFollow camFollow = mainCam.GetComponent<CameraFollow>();
+        if (camFollow == null)
+        {
+            camFollow = mainCam.gameObject.AddComponent<CameraFollow>();
+        }
+        camFollow.SetPlayer(player);
+    }
+
+    /// <summary>
+    /// Spawnt den Player falls nicht vorhanden
+    /// </summary>
+    private void SpawnPlayer()
+    {
+        // Existiert Player schon?
+        GameObject existingPlayer = GameObject.FindGameObjectWithTag("Player");
+        if (existingPlayer != null)
+        {
+            player = existingPlayer.transform;
+            Debug.Log("GameManager: Player gefunden.");
+        }
+        else if (autoSpawnPlayer)
+        {
+            // PLAYER ERSTELLEN!
+            GameObject playerObj = new GameObject("Player");
+            playerObj.tag = "Player";
+            playerObj.transform.position = playerSpawnPosition;
+
+            // Capsule Mesh
+            GameObject capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            capsule.name = "PlayerMesh";
+            capsule.transform.SetParent(playerObj.transform);
+            capsule.transform.localPosition = new Vector3(0, 1, 0);
+            Object.Destroy(capsule.GetComponent<Collider>());
+
+            // Material (blau)
+            Renderer rend = capsule.GetComponent<Renderer>();
+            if (rend != null)
+            {
+                Material mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                mat.color = new Color(0.2f, 0.6f, 1f);
+                rend.material = mat;
+            }
+
+            // Collider
+            CapsuleCollider col = playerObj.AddComponent<CapsuleCollider>();
+            col.center = new Vector3(0, 1, 0);
+            col.height = 2f;
+            col.radius = 0.5f;
+
+            // Rigidbody
+            Rigidbody rb = playerObj.AddComponent<Rigidbody>();
+            rb.constraints = RigidbodyConstraints.FreezeRotation;
+
+            // PlayerController
+            playerObj.AddComponent<PlayerController>();
+
+            player = playerObj.transform;
+            Debug.Log("GameManager: PLAYER ERSTELLT!");
+        }
+
+        // Player-Referenz an andere Scripts weitergeben
+        if (player != null)
+        {
+            if (voxelSpawner != null)
+                voxelSpawner.SetPlayer(player);
+
+            if (trackGenerator != null)
+                trackGenerator.SetPlayer(player);
+        }
     }
 
     void OnRulesLoaded(List<RuleData> rules)
     {
         if (rules != null && rules.Count > 0)
         {
-            currentActiveRule = rules[0];  // Erste Regel als aktiv setzen
-            Debug.Log($"GameManager: Active Rule loaded: {currentActiveRule.question}");
+            currentActiveRule = rules[0];
+            Debug.Log($"GameManager: Rule loaded: {currentActiveRule.question}");
 
-            // UI aktualisieren
             if (UIManager.Instance != null)
             {
                 UIManager.Instance.SetActiveRule(currentActiveRule.question);
@@ -82,15 +184,12 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("GameManager: Keine Regeln vom Server erhalten!");
-
-            // Fallback: Default-Regel erstellen
+            // Fallback-Regel
             currentActiveRule = new RuleData
             {
                 rule_id = "fallback",
-                question = "Searching for papers...",
-                threshold = 0.7f,
-                is_active = true
+                question = "Suche Papers...",
+                threshold = 0.7f
             };
 
             if (UIManager.Instance != null)
@@ -114,25 +213,34 @@ public class GameManager : MonoBehaviour
 
         foreach (var job in jobs)
         {
-            // WICHTIG: Base64-Daten dekodieren!
+            // Base64 dekodieren falls vorhanden
             job.DecodeData();
-
             jobQueue.Enqueue(job);
+
+            // Rule-Preview anzeigen wenn erster Job mit pos_embedding
+            if (rulePreview != null && job.pos_embedding != null && currentActiveRule != null)
+            {
+                rulePreview.ShowRule(job.rule_id ?? currentActiveRule.rule_id, job.pos_embedding);
+            }
         }
 
-        Debug.Log($"GameManager: Received {jobs.Count} jobs. Queue size: {jobQueue.Count}");
+        Debug.Log($"GameManager: {jobs.Count} Jobs erhalten. Queue: {jobQueue.Count}");
     }
 
     void Update()
     {
-        // Jobs spawnen wenn Queue nicht leer
-        // Zufälliges Spawning basierend auf spawnChancePerSecond
+        // Jobs spawnen
         if (jobQueue.Count > 0 && voxelSpawner != null)
         {
             if (Random.value < spawnChancePerSecond * Time.deltaTime)
             {
                 VoxelData job = jobQueue.Dequeue();
-                voxelSpawner.SpawnFromData(job);
+                Debug.Log($"GameManager: Spawning Job {job.job_id ?? job.paper_id} - Queue: {jobQueue.Count} remaining");
+                GameObject spawned = voxelSpawner.SpawnFromData(job);
+                if (spawned == null)
+                {
+                    Debug.LogError($"GameManager: SpawnFromData returned NULL for {job.paper_id}!");
+                }
             }
         }
     }
@@ -144,24 +252,19 @@ public class GameManager : MonoBehaviour
     {
         if (paper == null) return;
 
-        papersValidated++;
-
-        // Rule Matching durchführen (mit VoxelData statt nur Embedding)
+        // Matching prüfen
         RuleMatcher.MatchResult result;
 
         if (ruleMatcher != null && paper.jobData != null)
         {
-            // Neue Methode: Embeddings aus jobData nutzen
             result = ruleMatcher.CheckMatch(paper.jobData, currentActiveRule);
         }
         else if (ruleMatcher != null && currentActiveRule != null && paper.embedding != null)
         {
-            // Legacy-Fallback
             result = ruleMatcher.CheckMatch(paper.embedding, currentActiveRule);
         }
         else
         {
-            // Fallback wenn kein Matching möglich
             result = new RuleMatcher.MatchResult
             {
                 is_match = false,
@@ -173,26 +276,19 @@ public class GameManager : MonoBehaviour
 
         // Punkte addieren
         totalPoints += result.points;
-
         if (result.is_match)
         {
             matchesFound++;
-            Debug.Log($"GameManager: MATCH! +{result.points} Punkte (Similarity: {result.similarity:F2})");
-        }
-        else
-        {
-            Debug.Log($"GameManager: Kein Match. +{result.points} Punkte");
         }
 
-        // UI Update
+        // UI aktualisieren
         if (UIManager.Instance != null)
         {
             UIManager.Instance.UpdateScore(totalPoints, matchesFound);
             UIManager.Instance.ShowFeedback(result.feedback);
         }
 
-        // Result für Server-Submit speichern
-        // Job-ID aus jobData wenn verfügbar
+        // Result für Server speichern
         string jobId = paper.jobId ?? $"job_{paper.paperId}_{paper.section}";
         string ruleId = paper.jobData?.rule_id ?? currentActiveRule?.rule_id ?? "unknown";
 
@@ -201,44 +297,39 @@ public class GameManager : MonoBehaviour
             job_id = jobId,
             paper_id = paper.paperId,
             rule_id = ruleId,
+            section = paper.section,
             is_match = result.is_match,
             similarity = result.similarity,
-            confidence = result.similarity,
-            points_earned = result.points,
-            time_taken_ms = 0
+            points_earned = result.points
         };
 
         pendingResults.Add(validationResult);
+        Debug.Log($"GameManager: {result.feedback} - Total: {totalPoints} Punkte, {matchesFound} Matches");
     }
 
     void SubmitPendingResults()
     {
-        if (pendingResults.Count > 0 && apiClient != null)
-        {
-            // Kopie erstellen für Submit
-            List<ValidationResult> toSubmit = new List<ValidationResult>(pendingResults);
-            pendingResults.Clear();
+        if (pendingResults.Count == 0 || apiClient == null) return;
 
-            StartCoroutine(apiClient.SubmitResults(toSubmit, (success) =>
+        var toSubmit = new List<ValidationResult>(pendingResults);
+        pendingResults.Clear();
+
+        StartCoroutine(apiClient.SubmitResults(toSubmit, (success) =>
+        {
+            if (!success)
             {
-                if (success)
-                {
-                    Debug.Log($"GameManager: {toSubmit.Count} Results erfolgreich submitted");
-                }
-                else
-                {
-                    // Bei Fehler wieder hinzufügen für Retry
-                    Debug.LogWarning("GameManager: Submit fehlgeschlagen, Results werden erneut versucht");
-                    pendingResults.AddRange(toSubmit);
-                }
-            }));
-        }
+                pendingResults.AddRange(toSubmit);
+                Debug.LogWarning("GameManager: Submit fehlgeschlagen, wird erneut versucht");
+            }
+            else
+            {
+                Debug.Log($"GameManager: {toSubmit.Count} Results erfolgreich gesendet");
+            }
+        }));
     }
 
-    // === Öffentliche Getter ===
+    // Public Getter
     public int GetTotalPoints() => totalPoints;
-    public int GetPapersValidated() => papersValidated;
     public int GetMatchesFound() => matchesFound;
     public RuleData GetCurrentRule() => currentActiveRule;
-    public int GetJobQueueSize() => jobQueue.Count;
 }

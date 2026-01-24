@@ -36,9 +36,12 @@ public class CollectiblePaper : MonoBehaviour
 
     void OnTriggerEnter(Collider other)
     {
+        Debug.Log($"CollectiblePaper: Trigger mit {other.name}, Tag: {other.tag}");
+
         // Nur auf Player-Tag reagieren
         if (other.CompareTag("Player"))
         {
+            Debug.Log("CollectiblePaper: PLAYER COLLISION - Collecting!");
             Collect(other.gameObject);
         }
     }

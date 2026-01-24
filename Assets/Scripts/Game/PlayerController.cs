@@ -1,8 +1,9 @@
 // Scripts/Game/PlayerController.cs
 // Spieler-Steuerung für den Endless Runner
-// Touch-Swipe auf Android, Keyboard-Fallback für Editor-Testing
+// Nutzt neues Input System
 
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
 {
@@ -18,6 +19,7 @@ public class PlayerController : MonoBehaviour
     [Header("Input")]
     [SerializeField] private float swipeThreshold = 50f;
     private Vector2 touchStartPos;
+    private bool isTouching = false;
 
     void Start()
     {
@@ -41,20 +43,37 @@ public class PlayerController : MonoBehaviour
 
     void HandleInput()
     {
-        // Swipe Detection für Android
-        if (Input.touchCount > 0)
+        // Keyboard Input (neues Input System)
+        Keyboard keyboard = Keyboard.current;
+        if (keyboard != null)
         {
-            Touch touch = Input.GetTouch(0);
+            if (keyboard.aKey.wasPressedThisFrame || keyboard.leftArrowKey.wasPressedThisFrame)
+                MoveLane(-1);
+            if (keyboard.dKey.wasPressedThisFrame || keyboard.rightArrowKey.wasPressedThisFrame)
+                MoveLane(1);
+        }
 
-            if (touch.phase == TouchPhase.Began)
+        // Touch Input (neues Input System)
+        Touchscreen touchscreen = Touchscreen.current;
+        if (touchscreen != null && touchscreen.primaryTouch.press.isPressed)
+        {
+            Vector2 touchPos = touchscreen.primaryTouch.position.ReadValue();
+
+            if (!isTouching)
             {
-                touchStartPos = touch.position;
+                // Touch gestartet
+                touchStartPos = touchPos;
+                isTouching = true;
             }
-            else if (touch.phase == TouchPhase.Ended)
+        }
+        else if (isTouching)
+        {
+            // Touch beendet - Swipe auswerten
+            if (touchscreen != null)
             {
-                Vector2 swipeDelta = touch.position - touchStartPos;
+                Vector2 touchEndPos = touchscreen.primaryTouch.position.ReadValue();
+                Vector2 swipeDelta = touchEndPos - touchStartPos;
 
-                // Horizontal Swipe
                 if (Mathf.Abs(swipeDelta.x) > swipeThreshold)
                 {
                     if (swipeDelta.x > 0)
@@ -63,13 +82,8 @@ public class PlayerController : MonoBehaviour
                         MoveLane(-1); // Links
                 }
             }
+            isTouching = false;
         }
-
-        // Fallback: Keyboard für Editor-Testing
-        if (Input.GetKeyDown(KeyCode.A) || Input.GetKeyDown(KeyCode.LeftArrow))
-            MoveLane(-1);
-        if (Input.GetKeyDown(KeyCode.D) || Input.GetKeyDown(KeyCode.RightArrow))
-            MoveLane(1);
     }
 
     void MoveLane(int direction)

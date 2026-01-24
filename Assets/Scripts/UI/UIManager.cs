@@ -1,13 +1,12 @@
 // Scripts/UI/UIManager.cs
-// HUD-Verwaltung - Singleton Pattern
-// Zeigt Score, Matches, Feedback und aktive Regel an
+// HUD-Verwaltung - VEREINFACHT
+// Nur Score, Matches, Feedback, aktive Regel - KEIN SCHNICKSCHNACK
 
 using UnityEngine;
 using TMPro;
 
 public class UIManager : MonoBehaviour
 {
-    // Singleton Instance
     public static UIManager Instance { get; private set; }
 
     [Header("HUD Elements")]
@@ -23,7 +22,6 @@ public class UIManager : MonoBehaviour
 
     void Awake()
     {
-        // Singleton Setup
         if (Instance == null)
         {
             Instance = this;
@@ -37,7 +35,6 @@ public class UIManager : MonoBehaviour
 
     void Start()
     {
-        // Initial UI Setup
         UpdateScore(0, 0);
 
         if (feedbackText != null)
@@ -82,7 +79,6 @@ public class UIManager : MonoBehaviour
             feedbackText.color = missColor;
         }
 
-        // Vorherigen Hide-Aufruf abbrechen
         CancelInvoke(nameof(HideFeedback));
         Invoke(nameof(HideFeedback), feedbackDuration);
     }
@@ -102,16 +98,7 @@ public class UIManager : MonoBehaviour
     {
         if (activeRuleText != null)
         {
-            activeRuleText.text = $"🔍 Suche: {ruleQuestion}";
+            activeRuleText.text = $"Suche: {ruleQuestion}";
         }
-    }
-
-    /// <summary>
-    /// Zeigt Game Over Screen (für spätere Implementierung)
-    /// </summary>
-    public void ShowGameOver(int finalScore, int totalMatches)
-    {
-        Debug.Log($"Game Over! Score: {finalScore}, Matches: {totalMatches}");
-        // TODO: Game Over UI Panel aktivieren
     }
 }

@@ -10,7 +10,7 @@ using System.Collections.Generic;
 public class ApiClient : MonoBehaviour
 {
     [Header("Server Settings")]
-    [SerializeField] private string serverUrl = "http://localhost:8089";
+    [SerializeField] private string serverUrl = "http://127.0.0.1:8089";
     [SerializeField] private string deviceId;
 
     [Header("Debug")]
@@ -34,6 +34,38 @@ public class ApiClient : MonoBehaviour
         if (logRequests)
         {
             Debug.Log($"ApiClient initialisiert mit Device ID: {deviceId}");
+        }
+
+        // Device beim Server registrieren
+        StartCoroutine(RegisterDevice());
+    }
+
+    /// <summary>
+    /// Registriert dieses Device beim Server
+    /// </summary>
+    public IEnumerator RegisterDevice()
+    {
+        string url = $"{serverUrl}/api/devices/register";
+
+        string json = $"{{\"device_id\":\"{deviceId}\",\"device_name\":\"Unity\",\"device_model\":\"{SystemInfo.deviceModel}\",\"os_version\":\"{SystemInfo.operatingSystem}\",\"app_version\":\"1.0.0\"}}";
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                Debug.Log("ApiClient: Device registriert!");
+            }
+            else
+            {
+                Debug.LogWarning($"ApiClient: Device-Registration fehlgeschlagen: {request.error}");
+            }
         }
     }
 
@@ -116,6 +148,7 @@ public class ApiClient : MonoBehaviour
         string json = JsonUtility.ToJson(submitData);
 
         if (logRequests) Debug.Log($"ApiClient: Submitting {results.Count} results to {url}");
+        if (logRequests) Debug.Log($"ApiClient: Submit JSON: {json}");
 
         using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
         {
@@ -232,14 +265,14 @@ public class SubmitRequest
 [System.Serializable]
 public class ValidationResult
 {
+    // Basis-Felder (Server-Kompatibel)
     public string job_id;
     public string paper_id;
     public string rule_id;
+    public string section;
     public bool is_match;
     public float similarity;
-    public float confidence;
     public int points_earned;
-    public int time_taken_ms;
 }
 
 [System.Serializable]
