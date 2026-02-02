@@ -1,4 +1,3 @@
-
 using UnityEngine;
 using UnityEngine.Networking;
 using System;
@@ -15,8 +14,10 @@ public class ApiClient : MonoBehaviour
     [SerializeField] private string deviceId;
 
     [Header("Authentication")]
-    [Tooltip("Erfordert Login vor API-Calls")]
-    [SerializeField] private bool requireAuth = false;
+    [Tooltip("Erfordert Server-Auth vor API-Calls")]
+    [SerializeField] private bool requireAuth = true;
+    [Tooltip("Automatisch beim Server authentifizieren nach Unity Sign-In")]
+    [SerializeField] private bool autoAuthWithServer = true;
 
     [Header("SSE Settings")]
     [SerializeField] private bool autoConnectSSE = true;
@@ -39,6 +40,8 @@ public class ApiClient : MonoBehaviour
     public event Action<Molecule> OnActiveRuleLoaded;
     public event Action OnSSEConnected;
     public event Action OnSSEDisconnected;
+    public event Action<string> OnServerAuthenticated;  // session_token
+    public event Action<string> OnServerAuthFailed;     // error message
 
     // SSE Status
     private bool _sseConnected = false;
@@ -47,23 +50,80 @@ public class ApiClient : MonoBehaviour
     private Coroutine _jobStreamCoroutine;
     private int _sseReconnectAttempts = 0;
 
+    // Server Auth Status
+    private string _sessionToken = null;
+    private string _playerId = null;
+    private bool _isAuthenticatingWithServer = false;
+
     public bool IsSSEConnected => _sseConnected;
     public string DeviceId => deviceId;
     
     /// <summary>
-    /// Prüft ob authentifiziert (wenn Auth erforderlich)
+    /// Prüft ob beim Server authentifiziert
     /// </summary>
-    public bool IsAuthenticated => !requireAuth || (UnityAuthManager.Instance != null && UnityAuthManager.Instance.IsSignedIn);
+    public bool IsServerAuthenticated => !string.IsNullOrEmpty(_sessionToken);
+    
+    /// <summary>
+    /// Prüft ob Unity Auth eingeloggt
+    /// </summary>
+    public bool IsUnitySignedIn => UnityAuthManager.Instance != null && UnityAuthManager.Instance.IsSignedIn;
+    
+    /// <summary>
+    /// Kombinierte Auth-Prüfung (Unity + Server)
+    /// </summary>
+    public bool IsFullyAuthenticated => IsUnitySignedIn && IsServerAuthenticated;
+    
+    /// <summary>
+    /// Server Session Token (für externe Nutzung)
+    /// </summary>
+    public string SessionToken => _sessionToken;
+    
+    /// <summary>
+    /// Server Player ID
+    /// </summary>
+    public string PlayerId => _playerId;
 
     void Start()
     {
         InitializeDeviceId();
-        StartCoroutine(RegisterDevice());
-
-        if (autoConnectSSE)
+        
+        // Subscribe to Unity Auth events
+        if (UnityAuthManager.Instance != null)
         {
-            ConnectSSE();
+            UnityAuthManager.Instance.OnSignedIn += OnUnitySignedIn;
+            UnityAuthManager.Instance.OnSignedOut += OnUnitySignedOut;
+            
+            // Falls schon eingeloggt, direkt Server-Auth starten
+            if (UnityAuthManager.Instance.IsSignedIn && autoAuthWithServer)
+            {
+                StartCoroutine(AuthenticateWithServer());
+            }
         }
+        else
+        {
+            // Kein Unity Auth Manager - Fallback auf anonyme Auth
+            StartCoroutine(RegisterDevice());
+            if (autoConnectSSE) ConnectSSE();
+        }
+    }
+
+    private void OnUnitySignedIn(string unityPlayerId)
+    {
+        deviceId = unityPlayerId;
+        if (logRequests) Debug.Log($"[ApiClient] Unity signed in: {unityPlayerId}");
+        
+        if (autoAuthWithServer)
+        {
+            StartCoroutine(AuthenticateWithServer());
+        }
+    }
+
+    private void OnUnitySignedOut()
+    {
+        if (logRequests) Debug.Log("[ApiClient] Unity signed out - clearing server session");
+        _sessionToken = null;
+        _playerId = null;
+        DisconnectSSE();
     }
 
     private void InitializeDeviceId()
@@ -72,7 +132,7 @@ public class ApiClient : MonoBehaviour
         if (UnityAuthManager.Instance != null && UnityAuthManager.Instance.IsSignedIn)
         {
             deviceId = UnityAuthManager.Instance.PlayerId;
-            if (logRequests) Debug.Log($"ApiClient: Using Unity Auth PlayerId = {deviceId}");
+            if (logRequests) Debug.Log($"[ApiClient] Using Unity PlayerId: {deviceId}");
             return;
         }
 
@@ -87,17 +147,163 @@ public class ApiClient : MonoBehaviour
                 PlayerPrefs.Save();
             }
         }
-        if (logRequests) Debug.Log($"ApiClient: Device ID = {deviceId}");
+        if (logRequests) Debug.Log($"[ApiClient] Using Device ID: {deviceId}");
+    }
+
+    // ============================================================
+    // SERVER AUTHENTICATION
+    // ============================================================
+
+    /// <summary>
+    /// Authentifiziert beim PaperStream Server mit Unity idToken
+    /// POST /api/auth/unity
+    /// </summary>
+    public IEnumerator AuthenticateWithServer()
+    {
+        if (_isAuthenticatingWithServer)
+        {
+            if (logRequests) Debug.Log("[ApiClient] Already authenticating...");
+            yield break;
+        }
+
+        if (UnityAuthManager.Instance == null || !UnityAuthManager.Instance.IsSignedIn)
+        {
+            Debug.LogWarning("[ApiClient] Cannot auth with server - Unity not signed in");
+            OnServerAuthFailed?.Invoke("Unity not signed in");
+            yield break;
+        }
+
+        _isAuthenticatingWithServer = true;
+        string idToken = UnityAuthManager.Instance.AccessToken;
+
+        if (string.IsNullOrEmpty(idToken))
+        {
+            Debug.LogError("[ApiClient] Unity AccessToken is null/empty");
+            _isAuthenticatingWithServer = false;
+            OnServerAuthFailed?.Invoke("No access token");
+            yield break;
+        }
+
+        string url = $"{serverUrl}/api/auth/unity";
+        if (logRequests) Debug.Log($"[ApiClient] Authenticating with server: {url}");
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Authorization", $"Bearer {idToken}");
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.timeout = 30;
+
+            yield return request.SendWebRequest();
+
+            _isAuthenticatingWithServer = false;
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    string json = request.downloadHandler.text;
+                    var response = JsonUtility.FromJson<ServerAuthResponse>(json);
+
+                    if (response.success)
+                    {
+                        _sessionToken = response.session_token;
+                        _playerId = response.player_id;
+                        
+                        if (logRequests)
+                        {
+                            Debug.Log($"[ApiClient] ✅ Server auth successful!");
+                            Debug.Log($"[ApiClient] Player ID: {_playerId}");
+                            Debug.Log($"[ApiClient] Session expires in: {response.expires_in}s");
+                        }
+
+                        OnServerAuthenticated?.Invoke(_sessionToken);
+
+                        // Jetzt SSE verbinden
+                        if (autoConnectSSE) ConnectSSE();
+                    }
+                    else
+                    {
+                        Debug.LogError($"[ApiClient] Server auth failed: {response.error}");
+                        OnServerAuthFailed?.Invoke(response.error);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[ApiClient] Server auth parse error: {e.Message}");
+                    OnServerAuthFailed?.Invoke(e.Message);
+                }
+            }
+            else
+            {
+                string error = $"HTTP {request.responseCode}: {request.error}";
+                Debug.LogError($"[ApiClient] Server auth request failed: {error}");
+                
+                // Versuche Error-Body zu lesen
+                if (!string.IsNullOrEmpty(request.downloadHandler.text))
+                {
+                    Debug.LogError($"[ApiClient] Response: {request.downloadHandler.text}");
+                }
+                
+                OnServerAuthFailed?.Invoke(error);
+            }
+        }
     }
 
     /// <summary>
-    /// Fügt Auth-Header zu Request hinzu (Unity Auth Access Token)
+    /// Anonyme Server-Auth (für lokales Testing ohne Unity)
+    /// POST /api/auth/anonymous
+    /// </summary>
+    public IEnumerator AuthenticateAnonymously()
+    {
+        string url = $"{serverUrl}/api/auth/anonymous";
+        string json = $"{{\"device_id\":\"{deviceId}\"}}";
+
+        if (logRequests) Debug.Log($"[ApiClient] Anonymous auth: {url}");
+
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.timeout = 30;
+
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    var response = JsonUtility.FromJson<ServerAuthResponse>(request.downloadHandler.text);
+                    if (response.success)
+                    {
+                        _sessionToken = response.session_token;
+                        _playerId = response.player_id;
+                        if (logRequests) Debug.Log($"[ApiClient] ✅ Anonymous auth: {_playerId}");
+                        OnServerAuthenticated?.Invoke(_sessionToken);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[ApiClient] Anonymous auth error: {e.Message}");
+                }
+            }
+            else
+            {
+                Debug.LogError($"[ApiClient] Anonymous auth failed: {request.error}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Fügt Session-Token Header zu Request hinzu
     /// </summary>
     private void AddAuthHeader(UnityWebRequest request)
     {
-        if (UnityAuthManager.Instance != null && UnityAuthManager.Instance.IsSignedIn)
+        if (!string.IsNullOrEmpty(_sessionToken))
         {
-            request.SetRequestHeader("Authorization", $"Bearer {UnityAuthManager.Instance.AccessToken}");
+            request.SetRequestHeader("Authorization", $"Bearer {_sessionToken}");
         }
     }
 
@@ -112,17 +318,18 @@ public class ApiClient : MonoBehaviour
     public IEnumerator FetchActiveRule(Action<Molecule, float, string> callback)
     {
         string url = $"{serverUrl}/api/rule/active";
-        if (logRequests) Debug.Log($"ApiClient: Fetching active rule from {url}");
+        if (logRequests) Debug.Log($"[ApiClient] Fetching active rule from {url}");
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
             request.timeout = 30;
+            AddAuthHeader(request);
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
             {
                 string json = request.downloadHandler.text;
-                if (logRequests) Debug.Log($"ApiClient: Active Rule Response: {json.Substring(0, Mathf.Min(300, json.Length))}...");
+                if (logRequests) Debug.Log($"[ApiClient] Active Rule Response: {json.Substring(0, Mathf.Min(300, json.Length))}...");
 
                 try
                 {
@@ -142,19 +349,19 @@ public class ApiClient : MonoBehaviour
                     }
                     else
                     {
-                        Debug.LogWarning("ApiClient: Keine aktive Rule vom Server");
+                        Debug.LogWarning("[ApiClient] Keine aktive Rule vom Server");
                         callback?.Invoke(null, 0.7f, "");
                     }
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"ApiClient: JSON Parse Error (active rule): {e.Message}");
+                    Debug.LogError($"[ApiClient] JSON Parse Error (active rule): {e.Message}");
                     callback?.Invoke(null, 0.7f, "");
                 }
             }
             else
             {
-                Debug.LogError($"ApiClient: Failed to fetch active rule: {request.error}");
+                Debug.LogError($"[ApiClient] Failed to fetch active rule: {request.error}");
                 callback?.Invoke(null, 0.7f, "");
             }
         }
@@ -192,6 +399,7 @@ public class ApiClient : MonoBehaviour
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Accept", "text/event-stream");
             request.SetRequestHeader("Cache-Control", "no-cache");
+            AddAuthHeader(request);
             request.timeout = 0;
 
             var operation = request.SendWebRequest();
@@ -281,7 +489,7 @@ public class ApiClient : MonoBehaviour
         string url = $"{serverUrl}/api/jobs/{response.job_id}/response";
         string json = JsonUtility.ToJson(response);
 
-        if (logRequests) Debug.Log($"ApiClient: Submitting response to {url}");
+        if (logRequests) Debug.Log($"[ApiClient] Submitting response to {url}");
 
         using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
         {
@@ -289,6 +497,7 @@ public class ApiClient : MonoBehaviour
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
+            AddAuthHeader(request);
 
             yield return request.SendWebRequest();
 
@@ -306,8 +515,90 @@ public class ApiClient : MonoBehaviour
             }
             else
             {
-                Debug.LogError($"ApiClient: Failed to submit response: {request.error}");
+                Debug.LogError($"[ApiClient] Failed to submit response: {request.error}");
                 callback?.Invoke(false, null);
+            }
+        }
+    }
+
+    // ============================================================
+    // PLAYER API
+    // ============================================================
+
+    /// <summary>
+    /// GET /api/player/me
+    /// Holt eigenes Spielerprofil
+    /// </summary>
+    public IEnumerator FetchMyProfile(Action<PlayerProfile> callback)
+    {
+        if (!IsServerAuthenticated)
+        {
+            Debug.LogWarning("[ApiClient] Not authenticated - cannot fetch profile");
+            callback?.Invoke(null);
+            yield break;
+        }
+
+        string url = $"{serverUrl}/api/player/me";
+        if (logRequests) Debug.Log($"[ApiClient] Fetching profile from {url}");
+
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        {
+            request.timeout = 30;
+            AddAuthHeader(request);
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    var profile = JsonUtility.FromJson<PlayerProfile>(request.downloadHandler.text);
+                    callback?.Invoke(profile);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[ApiClient] Profile parse error: {e.Message}");
+                    callback?.Invoke(null);
+                }
+            }
+            else
+            {
+                Debug.LogError($"[ApiClient] Failed to fetch profile: {request.error}");
+                callback?.Invoke(null);
+            }
+        }
+    }
+
+    /// <summary>
+    /// GET /api/leaderboard
+    /// Holt Leaderboard
+    /// </summary>
+    public IEnumerator FetchLeaderboard(int limit, Action<List<LeaderboardEntry>> callback)
+    {
+        string url = $"{serverUrl}/api/leaderboard?limit={limit}";
+        if (logRequests) Debug.Log($"[ApiClient] Fetching leaderboard from {url}");
+
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        {
+            request.timeout = 30;
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    var response = JsonUtility.FromJson<LeaderboardResponse>(request.downloadHandler.text);
+                    callback?.Invoke(response?.entries ?? new List<LeaderboardEntry>());
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[ApiClient] Leaderboard parse error: {e.Message}");
+                    callback?.Invoke(new List<LeaderboardEntry>());
+                }
+            }
+            else
+            {
+                Debug.LogError($"[ApiClient] Failed to fetch leaderboard: {request.error}");
+                callback?.Invoke(new List<LeaderboardEntry>());
             }
         }
     }
@@ -343,6 +634,7 @@ public class ApiClient : MonoBehaviour
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Accept", "text/event-stream");
             request.SetRequestHeader("Cache-Control", "no-cache");
+            AddAuthHeader(request);
             request.timeout = 0;
 
             var operation = request.SendWebRequest();
@@ -525,26 +817,27 @@ public class ApiClient : MonoBehaviour
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
-                Debug.Log("ApiClient: Device registered!");
+                Debug.Log("[ApiClient] Device registered!");
             else
-                Debug.LogWarning($"ApiClient: Device registration failed: {request.error}");
+                Debug.LogWarning($"[ApiClient] Device registration failed: {request.error}");
         }
     }
 
     public IEnumerator FetchJobs(int limit, Action<List<VoxelData>> callback)
     {
         string url = $"{serverUrl}/api/jobs/next?device_id={UnityWebRequest.EscapeURL(deviceId)}&limit={limit}";
-        if (logRequests) Debug.Log($"ApiClient: Fetching jobs from {url}");
+        if (logRequests) Debug.Log($"[ApiClient] Fetching jobs from {url}");
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
             request.timeout = 30;
+            AddAuthHeader(request);
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
             {
                 string json = request.downloadHandler.text;
-                if (logRequests) Debug.Log($"ApiClient: Jobs response: {json.Substring(0, Mathf.Min(200, json.Length))}...");
+                if (logRequests) Debug.Log($"[ApiClient] Jobs response: {json.Substring(0, Mathf.Min(200, json.Length))}...");
                 
                 try
                 {
@@ -555,24 +848,24 @@ public class ApiClient : MonoBehaviour
                     if (response != null && response.status == "assigned" && response.job != null)
                     {
                         jobs.Add(response.job);
-                        if (logRequests) Debug.Log($"ApiClient: Got job for paper: {response.job.paper_id}");
+                        if (logRequests) Debug.Log($"[ApiClient] Got job for paper: {response.job.paper_id}");
                     }
                     else if (response != null && response.status == "no_jobs")
                     {
-                        if (logRequests) Debug.Log("ApiClient: No jobs available");
+                        if (logRequests) Debug.Log("[ApiClient] No jobs available");
                     }
                     
                     callback?.Invoke(jobs);
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"ApiClient: JSON Parse Error: {e.Message}\nJSON: {json.Substring(0, Mathf.Min(500, json.Length))}");
+                    Debug.LogError($"[ApiClient] JSON Parse Error: {e.Message}\nJSON: {json.Substring(0, Mathf.Min(500, json.Length))}");
                     callback?.Invoke(new List<VoxelData>());
                 }
             }
             else
             {
-                Debug.LogError($"ApiClient: Failed to fetch jobs: {request.error}");
+                Debug.LogError($"[ApiClient] Failed to fetch jobs: {request.error}");
                 callback?.Invoke(new List<VoxelData>());
             }
         }
@@ -590,6 +883,7 @@ public class ApiClient : MonoBehaviour
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
+            AddAuthHeader(request);
             yield return request.SendWebRequest();
 
             callback?.Invoke(request.result == UnityWebRequest.Result.Success);
@@ -599,11 +893,12 @@ public class ApiClient : MonoBehaviour
     public IEnumerator FetchActiveRules(Action<List<RuleData>> callback)
     {
         string url = $"{serverUrl}/api/rules";
-        if (logRequests) Debug.Log($"ApiClient: Fetching rules from {url}");
+        if (logRequests) Debug.Log($"[ApiClient] Fetching rules from {url}");
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
             request.timeout = 30;
+            AddAuthHeader(request);
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
@@ -615,13 +910,13 @@ public class ApiClient : MonoBehaviour
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"ApiClient: JSON Parse Error: {e.Message}");
+                    Debug.LogError($"[ApiClient] JSON Parse Error: {e.Message}");
                     callback?.Invoke(new List<RuleData>());
                 }
             }
             else
             {
-                Debug.LogError($"ApiClient: Failed to fetch rules: {request.error}");
+                Debug.LogError($"[ApiClient] Failed to fetch rules: {request.error}");
                 callback?.Invoke(new List<RuleData>());
             }
         }
@@ -630,18 +925,58 @@ public class ApiClient : MonoBehaviour
     public string GetDeviceId() => deviceId;
     public void SetServerUrl(string url) => serverUrl = url;
 
-    void OnDestroy() => DisconnectSSE();
+    void OnDestroy()
+    {
+        DisconnectSSE();
+        
+        if (UnityAuthManager.Instance != null)
+        {
+            UnityAuthManager.Instance.OnSignedIn -= OnUnitySignedIn;
+            UnityAuthManager.Instance.OnSignedOut -= OnUnitySignedOut;
+        }
+    }
 
     void OnApplicationPause(bool pauseStatus)
     {
         if (pauseStatus) DisconnectSSE();
-        else if (autoConnectSSE) ConnectSSE();
+        else if (autoConnectSSE && IsServerAuthenticated) ConnectSSE();
     }
 }
 
 // ============================================================
 // DATA CLASSES
 // ============================================================
+
+[Serializable]
+public class ServerAuthResponse
+{
+    public bool success;
+    public string session_token;
+    public string player_id;
+    public string unity_player_id;
+    public int expires_in;
+    public string error;
+    public bool anonymous;
+}
+
+[Serializable]
+public class PlayerProfile
+{
+    public string player_id;
+    public string unity_player_id;
+    public int total_score;
+    public int matches_found;
+    public int papers_validated;
+    public float accuracy;
+    public string created_at;
+    public string last_login;
+}
+
+[Serializable]
+public class LeaderboardResponse
+{
+    public List<LeaderboardEntry> entries;
+}
 
 [Serializable]
 public class JobsResponse
@@ -770,7 +1105,10 @@ public class LeaderboardEntry
 {
     public string device_id;
     public string player_name;
+    public string player_id;
     public int total_points;
+    public int score;
+    public float accuracy;
     public int rank;
 }
 
