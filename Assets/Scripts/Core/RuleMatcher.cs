@@ -1,128 +1,110 @@
-// Scripts/Core/RuleMatcher.cs
-// Embedding-basiertes Matching mit Cosine Similarity - VEREINFACHT
-// Keine externen Abhängigkeiten
+// Assets/Scripts/Core/RuleMatcher.cs
+// STARK VEREINFACHT nach DATAMODEL.md
+// Kein Cosine Similarity mehr client-side!
+// Server macht die Validierung - Client sendet nur Collect/Skip
 
 using UnityEngine;
+using ValidationGame.Data;
 
+/// <summary>
+/// Spieler-Aktionen die an den Server gesendet werden
+/// </summary>
+public enum PlayerAction
+{
+    Collect,  // Spieler hat eingesammelt (implizites JA - "sieht aus wie Referenz")
+    Skip      // Spieler hat ignoriert (implizites NEIN)
+}
+
+/// <summary>
+/// Job Response die an den Server gesendet wird
+/// </summary>
+[System.Serializable]
+public class JobResponse
+{
+    public string job_id;
+    public string device_id;
+    public string action;         // "collect" oder "skip"
+    public int response_time_ms;  // Reaktionszeit in Millisekunden
+}
+
+/// <summary>
+/// RuleMatcher - VEREINFACHT
+/// 
+/// ALTE LOGIK (entfernt):
+/// - Kein Cosine Similarity client-side
+/// - Kein lokales Matching
+/// 
+/// NEUE LOGIK:
+/// - Spieler sieht Paper-Shape und Rule-Referenz
+/// - Spieler entscheidet visuell: "Sieht das aus wie die grüne Referenz?"
+/// - Collect = JA, Skip = NEIN
+/// - Server aggregiert und validiert
+/// </summary>
 public class RuleMatcher : MonoBehaviour
 {
-    [Header("Settings")]
-    [SerializeField] private int matchPoints = 100;
-    [SerializeField] private int missPoints = 10;
+    [Header("Feedback Settings")]
+    [SerializeField] private int collectPoints = 10;
+    [SerializeField] private int skipPoints = 5;
 
-    [System.Serializable]
-    public class MatchResult
+    /// <summary>
+    /// Aktive Rule (vom Server geladen)
+    /// </summary>
+    public Molecule ActiveRule { get; private set; }
+    public float Threshold { get; private set; } = 0.7f;
+    public string Question { get; private set; } = "";
+
+    /// <summary>
+    /// Setzt die aktive Rule (von ApiClient geladen)
+    /// </summary>
+    public void SetActiveRule(Molecule rule, float threshold, string question)
     {
-        public bool is_match;
-        public float similarity;
-        public int points;
-        public string feedback;
+        ActiveRule = rule;
+        Threshold = threshold;
+        Question = question;
+
+        if (rule != null)
+        {
+            Debug.Log($"RuleMatcher: Active Rule gesetzt - '{question}' (Threshold: {threshold})");
+        }
     }
 
     /// <summary>
-    /// Prüft Match zwischen Paper-Embedding und Regel
+    /// Erstellt eine JobResponse für den Server
     /// </summary>
-    public MatchResult CheckMatch(VoxelData job, RuleData rule)
+    public JobResponse CreateResponse(string jobId, string deviceId, PlayerAction action, int responseTimeMs)
     {
-        float[] paperEmbedding = job?.section_embedding ?? job?.embedding;
-        float[] posEmbedding = job?.pos_embedding;
-
-        if (paperEmbedding == null || posEmbedding == null)
+        return new JobResponse
         {
-            return new MatchResult
-            {
-                is_match = false,
-                similarity = 0f,
-                points = missPoints,
-                feedback = "Paper eingesammelt! (+10)"
-            };
-        }
-
-        float threshold = job.threshold > 0 ? job.threshold : (rule?.threshold ?? 0.7f);
-        float similarity = CosineSimilarity(paperEmbedding, posEmbedding);
-        bool isMatch = similarity >= threshold;
-
-        int points = isMatch ? Mathf.RoundToInt(matchPoints * similarity) : missPoints;
-
-        string question = !string.IsNullOrEmpty(job.question) ? job.question : (rule?.question ?? "Paper");
-        string feedback = isMatch
-            ? $"✓ MATCH! {question} ({similarity:P0}) +{points}"
-            : $"Gesammelt (+{missPoints})";
-
-        return new MatchResult
-        {
-            is_match = isMatch,
-            similarity = similarity,
-            points = points,
-            feedback = feedback
+            job_id = jobId,
+            device_id = deviceId,
+            action = action == PlayerAction.Collect ? "collect" : "skip",
+            response_time_ms = responseTimeMs
         };
     }
 
     /// <summary>
-    /// Legacy-Methode für direkte Embedding-Übergabe
+    /// Gibt Feedback-Text für UI
     /// </summary>
-    public MatchResult CheckMatch(float[] paperEmbedding, RuleData rule)
+    public string GetFeedbackText(PlayerAction action)
     {
-        if (paperEmbedding == null || rule == null)
-        {
-            return new MatchResult
-            {
-                is_match = false,
-                similarity = 0f,
-                points = missPoints,
-                feedback = "Eingesammelt! (+10)"
-            };
-        }
-
-        float[] posEmbedding = rule.pos_embedding;
-        if (posEmbedding == null)
-        {
-            return new MatchResult
-            {
-                is_match = false,
-                similarity = 0f,
-                points = missPoints,
-                feedback = "Eingesammelt! (+10)"
-            };
-        }
-
-        float similarity = CosineSimilarity(paperEmbedding, posEmbedding);
-        bool isMatch = similarity >= rule.threshold;
-        int points = isMatch ? Mathf.RoundToInt(matchPoints * similarity) : missPoints;
-
-        return new MatchResult
-        {
-            is_match = isMatch,
-            similarity = similarity,
-            points = points,
-            feedback = isMatch
-                ? $"✓ MATCH! {rule.question} ({similarity:P0}) +{points}"
-                : $"Gesammelt (+{missPoints})"
-        };
+        return action == PlayerAction.Collect
+            ? $"Eingesammelt! (+{collectPoints})"
+            : $"Übersprungen (+{skipPoints})";
     }
 
     /// <summary>
-    /// Cosine Similarity: (a·b) / (|a||b|)
+    /// Gibt Punkte für Aktion (lokales Feedback, finale Punkte kommen vom Server)
     /// </summary>
-    public float CosineSimilarity(float[] a, float[] b)
+    public int GetLocalPoints(PlayerAction action)
     {
-        if (a == null || b == null || a.Length != b.Length || a.Length == 0)
-        {
-            return 0f;
-        }
-
-        float dot = 0f;
-        float magA = 0f;
-        float magB = 0f;
-
-        for (int i = 0; i < a.Length; i++)
-        {
-            dot += a[i] * b[i];
-            magA += a[i] * a[i];
-            magB += b[i] * b[i];
-        }
-
-        float magnitude = Mathf.Sqrt(magA) * Mathf.Sqrt(magB);
-        return magnitude > 0 ? dot / magnitude : 0f;
+        return action == PlayerAction.Collect ? collectPoints : skipPoints;
     }
+
+    // ============================================================
+    // ENTFERNT - Server macht das jetzt
+    // ============================================================
+    
+    // CosineSimilarity() - ENTFERNT
+    // CheckMatch() - ENTFERNT
+    // Kein lokales Embedding-Matching mehr!
 }
