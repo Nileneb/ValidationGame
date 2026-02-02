@@ -1,193 +1,224 @@
-# Copilot Instructions: ValidationGame (PaperRun)
+# Copilot Instructions: ValidationGame
 
-## 🎮 Project Overview
+## Project Overview
 
-**ValidationGame** is an Android endless runner game that gamifies scientific paper validation through 3D voxel structures. Players collect procedurally-generated voxel representations of paper sections and match them against semantic rules using embedding-based similarity matching. The game bridges an MCP server backend (running research validation tasks) with Unity gameplay.
+**ValidationGame** is a Unity game where players visually validate scientific papers by comparing 3D voxel structures. Papers and validation rules are represented as voxel shapes — players collect papers that "look like" the target rule.
 
-### Key Architecture
-
-- **Backend**: MCP server providing JSON voxel data (`VoxelData`), validation rules (`RuleData`), and scoring
-- **Game Loop**: Player moves forward automatically → collects voxels → matches embeddings → earns points
-- **Data Flow**: Server → ApiClient → GameManager → VoxelSpawner/RuleMatcher → UIManager
+**Core mechanic:** Visual pattern matching replaces expensive LLM classification.
 
 ---
 
-## 🏗️ Essential Project Structure
+## DATAMODEL.md Contract (CRITICAL!)
 
-### Data Classes (Serializable JSON contracts)
+The `DATAMODEL.md` file (in workspace root) defines the shared contract between Python backend and Unity frontend.
 
-- **`VoxelData`**: `paper_id`, `section`, `voxel_positions[]`, `color`, `embedding` (float array)
-- **`RuleData`**: `rule_id`, `question`, `pos_embedding`, `neg_embedding`, `threshold`
-- **`ValidationResult`**: Captured when paper collected; includes similarity score and points earned
+### Key Principle
+**The embedding → voxel transformation MUST be identical in Python and C#!**
 
-### Script Organization (follow this when creating new scripts)
+### Voxel Grid
+- **Dimensions:** 8×8×12 = 768 voxels (matches BioBERT embedding size)
+- **Mapping:** `i = x + y*8 + z*64`
+- **Threshold:** Default 0.3 (value >= threshold → voxel visible)
+
+### Visual Contrast Enhancement (must match Python exactly!)
+```csharp
+float centered = value - mean;
+float amplified = (float)Math.Tanh(centered * 2.0);
+float result = (amplified + 1.0f) / 2.0f;
+```
+
+---
+
+## Project Structure
 
 ```
 Assets/Scripts/
-├── Core/          # GameManager, RuleMatcher, Singletons
-├── Game/          # PlayerController, TrackGenerator
-├── Networking/    # ApiClient (REST via UnityWebRequest)
-├── UI/            # UIManager
-└── Voxel/         # VoxelStructureSpawner, CollectiblePaper, VoxelMover
+├── Core/
+│   ├── GameManager.cs       # Main game loop, job queue
+│   └── RuleMatcher.cs       # Simplified: just tracks player actions
+├── Data/
+│   ├── VoxelGrid.cs         # 8×8×12 grid data structure
+│   ├── Chunk.cs             # Container: embedding + voxels + color
+│   └── Molecule.cs          # Paper (chain) or Rule (dipole)
+├── Voxel/
+│   ├── EmbeddingToVoxel.cs  # ⭐ DATAMODEL.md transformation
+│   └── VoxelStructureSpawner.cs  # Instantiates 3D voxel cubes
+├── Networking/
+│   └── ApiClient.cs         # REST + SSE communication
+├── UI/
+│   ├── UIManager.cs         # Score, combo, UI updates
+│   └── RuleReferenceUI.cs   # Shows target rule as 3D preview
+├── Game/
+│   └── PlayerController.cs  # Lane switching, touch input
+└── Debug/
+    └── TestDataLoader.cs    # Loads offline test data
+
+Assets/StreamingAssets/
+└── TestData/                # Sample JSON for offline testing
 ```
 
-### Critical Scenes
+---
 
-- Only **SampleScene.unity** exists (starter template); must create **Game.unity** as main playable scene
+## Data Classes
+
+### Molecule (Paper or Rule)
+```csharp
+public class Molecule {
+    public string molecule_id;
+    public string molecule_type;  // "paper" or "rule"
+    public string title;
+    public List<Chunk> chunks;
+    public MoleculeConfig molecule_config;
+}
+```
+
+### Chunk (Section container)
+```csharp
+public class Chunk {
+    public int chunk_id;
+    public string chunk_type;     // "abstract", "methods", "positive", "negative"
+    public string embedding_b64;  // Base64 encoded float32 array
+    public ChunkVoxels voxels;    // Pre-computed voxel positions
+    public ChunkColor color;
+    public ChunkPosition position;
+    public List<int> connects_to;
+}
+```
+
+### VoxelGrid
+```csharp
+public class VoxelGrid {
+    public int[] gridSize;  // [8, 8, 12]
+    public List<Voxel> voxels;
+    public int voxelCount;
+    public float fillRatio;
+}
+```
 
 ---
 
-## ⚙️ Critical Patterns & Workflows
+## Game Flow
 
-### Embedding-Based Matching
+1. **Startup:** `GameManager` fetches active Rule via `ApiClient.FetchActiveRule()`
+2. **Rule Display:** `RuleReferenceUI` shows Rule's pos/neg voxel shapes as 3D reference
+3. **Job Stream:** `ApiClient.ConnectJobStream()` receives paper Chunks via SSE
+4. **Spawning:** `VoxelStructureSpawner.SpawnFromChunk()` creates 3D voxel objects
+5. **Player Action:** Collects (touch/collision) or ignores paper
+6. **Submit:** `ApiClient.SubmitJobResponse()` sends player decision to server
+7. **Scoring:** Server responds with points, consensus status
 
-**This is the game's core mechanic:**
-
-1. Voxel data arrives with `float[] embedding` (semantic vector from server)
-2. Current `RuleData` provides `pos_embedding` and optional `neg_embedding`
-3. `RuleMatcher.CosineSimilarity()` computes: similarity = (a·b) / (|a||b|)
-4. If similarity ≥ `rule.threshold` → match → points = `100 × similarity`
-5. If no match → still 10 consolation points
-
-**When modifying matching logic:** Preserve cosine similarity formula; adjust thresholds via server rules, not code.
-
-### Voxel Spawning Pipeline
-
-1. **GameManager** periodically calls `ApiClient.FetchJobs()` (batches of 10 voxels)
-2. Jobs enqueued in `jobQueue` (prevents spawn lag spikes)
-3. **Update()** probabilistically spawns: `Random.value < 0.1f * deltaTime`
-4. `VoxelStructureSpawner.SpawnFromJson()` instantiates parent + child cubes
-5. Each cube gets material with voxel's RGB color
-6. **VoxelMover** translates structure toward player at `-moveSpeed`
-7. **CollectiblePaper** trigger on player contact → `OnPaperCollected()` callback
-
-**When adding obstacles/variants:** Don't instantiate new copies; use object pooling on the Track prefab.
-
-### Input Handling (Android-first design)
-
-- Primary: **Touch swipe detection** (`Input.touchCount` → TouchPhase)
-- Fallback: **Keyboard A/D** for editor testing
-- Swipe threshold default: **50 pixels** (configurable via inspector)
-- Three lanes: 0 (left), 1 (center), 2 (right) with `laneDistance` spacing
-
-**When adding input:** Use `Input` module (legacy) since new InputSystem package present but not enforced; swipes fire `MoveLane(direction)`.
-
-### Networking (No Offline Support Yet)
-
-- **BaseUrl**: `http://localhost:8765` (dev MCP server)
-- **Device ID**: Generated from `SystemInfo.deviceUniqueIdentifier`, cached in `PlayerPrefs`
-- **Endpoints**: `/api/jobs/next`, `/api/validation/submit`, `/api/rules/active`
-- **Coroutines**: All requests use `IEnumerator` (no async/await)
-- **Error recovery**: Failed submits re-queue results for retry
-
-**When extending networking:** Match existing JSON contracts; add retry backoff if production needs it.
+**NO client-side similarity calculation! Server validates via human consensus.**
 
 ---
 
-## 🎯 Common Development Tasks
+## API Integration
 
-### Adding a New Game Feature
+### GET /api/rule/active
+```csharp
+StartCoroutine(apiClient.FetchActiveRule((molecule, threshold, question) => {
+    ruleMatcher.SetActiveRule(molecule, threshold, question);
+}));
+```
 
-1. Create script in appropriate `Scripts/` subfolder
-2. If it manages state: use Singleton pattern like `GameManager`/`UIManager`
-3. If it's procedural: attach to scene via `[SerializeField]` reference (no dynamic loading)
-4. Register callbacks through `GameManager.Instance` for cross-system communication
+### SSE /api/jobs/stream
+```csharp
+apiClient.OnJobReceived += (job) => {
+    // job.chunk contains the paper Chunk to spawn
+    voxelSpawner.SpawnFromChunk(job.chunk);
+};
+apiClient.ConnectJobStream();
+```
 
-### Modifying Voxel Appearance
-
-- **Color**: Comes from `VoxelData.color` (RGB 0-1 normalized)
-- **Material**: Shared `voxelMaterial` (assign in Inspector)
-- **Size**: `cubeSize` parameter (default 0.5) scales all voxel positions
-- **Glow effect**: Add shader to `voxelMaterial` (use Shader Graph; no custom shaders in repo yet)
-
-### Debugging Gameplay
-
-- Check `Debug.Log()` calls in GameManager for job queue status
-- ApiClient logs all network failures with error codes
-- Use `PlayerController` keyboard fallback (A/D keys) in Editor to test lanes without touch
-- Enable Console Profiler to monitor GameObject instantiation spikes
-
-### Server Integration Changes
-
-If MCP server changes API response format:
-
-1. Update `[System.Serializable]` class in ApiClient.cs
-2. Ensure field names match server JSON exactly (case-sensitive)
-3. Test with `JsonUtility.FromJson<T>()` on sample payload
-
----
-
-## 🔧 Build & Testing Specifics
-
-### Android Build Prerequisites
-
-- **Unity Version**: 6.3 LTS (already set; validates in `ProjectSettings/`)
-- **Minimum API**: Level 24 (Android 7.0)
-- **Target API**: Level 33 (Android 13)
-- **Graphics**: URP (Universal Render Pipeline v17.3.0)
-- **IL2CPP Scripting**: Required for ARMv7/ARM64 support
-- **Key Packages**: Input System (1.17), Timeline (1.8.9), AI Navigation (2.0.9)
-
-### Performance Constraints
-
-- Avoid dynamic physics queries in Update(); use trigger colliders only
-- Voxel structures destroyed when Z < player.Z - 20; don't increase this range significantly
-- Material instantiation happens per-voxel; batch material creation if spawning >50 voxels/frame
-- Use Object Pooling instead of Instantiate/Destroy for track segments (not yet implemented; TODO)
-
-### Testing Entry Points
-
-- **Game Scene**: Run SampleScene; verify PlayerController responds to A/D
-- **Network**: Start local MCP server; watch ApiClient console logs for job fetches
-- **Matching**: Manually set `currentActiveRule` threshold to 0.5 to force matches
+### POST /api/jobs/{job_id}/response
+```csharp
+var response = new PlayerJobResponse {
+    job_id = currentJob.job_id,
+    device_id = apiClient.DeviceId,
+    action = "collect",  // or "skip"
+    response_time_ms = elapsedMs
+};
+StartCoroutine(apiClient.SubmitJobResponse(response, (success, result) => {
+    if (result != null) AddScore(result.points);
+}));
+```
 
 ---
 
-## ⚠️ Project-Specific Conventions
+## Key Scripts
 
-### Naming & Defaults
+### EmbeddingToVoxel.cs
+Converts 768-dim embedding to 3D voxel positions. **Must match Python exactly!**
 
-- **Lanes**: Always 3; stored as int 0-2, mapped to X via `(lane - 1) * laneDistance`
-- **Forward Direction**: +Z axis (common 3D game convention; player always moves forward)
-- **Scoring**: Match=100×similarity; miss=10 points
-- **Device Tracking**: All validation results tagged with `SystemInfo.deviceUniqueIdentifier`
+```csharp
+public static VoxelGrid CreateVoxelGrid(float[] embedding, float threshold = 0.3f, bool enhanceContrast = true)
+```
 
-### Code Style (Observed)
+### VoxelStructureSpawner.cs
+Instantiates GameObjects from Chunk data.
 
-- **Serialized fields** for all configurable values (speeds, distances, thresholds)
-- **Comments in German** (project team is German-speaking); match this in new code
-- **Simple inheritance**: No complex hierarchies; mostly flat component design
-- **No external packages**: Uses only built-in Unity + URP; Newtonsoft JSON mentioned in TODO but not imported yet
+```csharp
+public GameObject SpawnFromChunk(Chunk chunk)
+public GameObject SpawnFromMolecule(Molecule molecule)
+```
 
-### Known Limitations
+### RuleMatcher.cs
+Tracks current rule and player actions. **No similarity math — humans decide!**
 
-- **UI System**: TextMeshPro only; no UGUI Canvas yet (see UIManager TODO)
-- **Voxel Effects**: Placeholder particle system referenced; not implemented
-- **Audio**: All audio stubbed (reference objects but no .wav/.mp3 files)
-- **Leaderboard Scene**: Referenced in TODO but not created
-- **3D Template**: Project uses 6.3 LTS 3D template, but only SampleScene present (Game.unity TODO)
-
----
-
-## 📋 Quick Checklist for New Contributors
-
-When implementing a feature from the TODO list:
-
-- [ ] Create script in correct `Scripts/` subfolder
-- [ ] Use `[SerializeField]` for tunables; expose via Inspector
-- [ ] Add German comments for non-obvious logic
-- [ ] Register with relevant Manager (GameManager/UIManager/ApiClient)
-- [ ] Test with keyboard fallback in Editor before mobile build
-- [ ] Check console logs for network/instantiation errors
-- [ ] Don't break the cosine similarity matching pipeline
-- [ ] Ensure voxel cleanup when player passes (avoid memory leaks)
+```csharp
+public void SetActiveRule(Molecule rule, float threshold, string question)
+public void RecordPlayerAction(string jobId, PlayerAction action)
+```
 
 ---
 
-## 🔗 Key Entry Points for Exploration
+## Testing
 
-- **Start Here**: [unity_TODO.md](../../unity_TODO.md) — comprehensive feature spec with C# pseudocode
-- **Game Flow**: `GameManager.Start()` → initializes rules, fetches jobs, spawns, submits results
-- **Matching Logic**: `RuleMatcher.CheckMatch()` → implements embedding similarity decision
-- **Networking Layer**: `ApiClient.FetchJobs()` and `ApiClient.SubmitResults()` — all server communication
-- **Player Input**: `PlayerController.HandleInput()` → swipe + keyboard lane changes
+### Offline Testing
+1. Add `TestDataLoader` component to a GameObject
+2. Set `loadOnStart = true`
+3. Play → loads JSON from `StreamingAssets/TestData/`
+4. Check Console for voxel counts
+
+### Determinism Test
+```csharp
+[ContextMenu("Test Voxel Determinism")]
+public void TestVoxelDeterminism()
+// Compares loaded voxels vs regenerated from embedding
+```
+
+---
+
+## Code Conventions
+
+- **German comments OK:** Team is German-speaking
+- **SerializeField:** All inspector-configurable values
+- **Singleton pattern:** GameManager, UIManager, ApiClient
+- **Coroutines:** All network calls (no async/await)
+
+---
+
+## Common Tasks
+
+### Adding a new Chunk type
+1. Add color to `SECTION_COLORS` in `EmbeddingToVoxel.cs`
+2. Handle in `VoxelStructureSpawner.GetChunkColor()`
+3. Update Python `data_model.py` to match
+
+### Changing voxel appearance
+1. Modify `VoxelStructureSpawner.SpawnVoxel()`
+2. Adjust `voxelMaterial` or add shader effects
+3. Scale via `voxelScale` parameter
+
+### Debugging spawning issues
+1. Check `TestDataLoader` Console output for voxel counts
+2. Verify JSON structure matches `Chunk` class
+3. Ensure `Initialize()` called after JSON deserialization
+
+---
+
+## Build Settings
+
+- **Unity Version:** 6.3 LTS
+- **Target:** Android (API 24+)
+- **Render Pipeline:** URP
+- **Input:** Legacy Input Manager (touch + keyboard fallback)
