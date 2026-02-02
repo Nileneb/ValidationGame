@@ -151,7 +151,7 @@ public static class EmbeddingToVoxel
 
         // ========== CHIFFRE: Embedding → Voxel ==========
         // Das Embedding IST der Bauplan - nichts anderes!
-        
+
         Debug.Log($"EmbeddingToVoxel CHIFFRE: {embedding.Length} Dimensionen, " +
                   $"erste Werte: [{embedding[0]:F4}, {embedding[1]:F4}, {embedding[2]:F4}]");
 

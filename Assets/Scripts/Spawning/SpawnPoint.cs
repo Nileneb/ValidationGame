@@ -158,43 +158,43 @@ public class SpawnPoint : MonoBehaviour
             Debug.Log($"SpawnPoint: Dekodiere Embeddings für '{job.paper_id}'...");
             job.DecodeData();
         }
-        
+
         string paperId = job.paper_id ?? System.Guid.NewGuid().ToString();
-        
+
         // === CHUNK-BASIERTE VISUALISIERUNG ===
         // Jeder Chunk bekommt seinen eigenen 3D-Container!
         if (job.chunks != null && job.chunks.Length > 0)
         {
             Debug.Log($"SpawnPoint CHIFFRE: Paper '{paperId}' hat {job.chunks.Length} Chunks");
-            
+
             // Chunk-Container für Positionen speichern (für Wire-Verbindungen)
             List<GameObject> chunkContainers = new List<GameObject>();
-            
+
             // Chunk-Spacing: Wie weit sind Chunks auseinander?
             float chunkSpacing = 15f;  // 15 Units zwischen Chunks
-            
+
             for (int chunkIdx = 0; chunkIdx < job.chunks.Length; chunkIdx++)
             {
                 var chunk = job.chunks[chunkIdx];
-                
+
                 // Chunk-Embedding dekodieren falls nötig
                 if (chunk.embedding == null && !string.IsNullOrEmpty(chunk.embedding_b64))
                 {
                     chunk.DecodeEmbedding();
                 }
-                
+
                 float[] chunkEmb = chunk.embedding;
                 if (chunkEmb == null || chunkEmb.Length < 768)
                 {
                     Debug.LogWarning($"  Chunk {chunkIdx} '{chunk.section_name}' hat kein Embedding, überspringe...");
                     continue;
                 }
-                
+
                 // === CHUNK-CONTAINER erstellen ===
                 string chunkName = $"Chunk_{chunkIdx}_{chunk.section_name ?? "unknown"}";
                 GameObject chunkContainer = new GameObject(chunkName);
                 chunkContainer.transform.SetParent(_currentStructure.transform);
-                
+
                 // Chunk-Position: Verteile Chunks im 3D-Raum
                 // Verwende chunk.position falls vorhanden, sonst verteile linear
                 Vector3 chunkPos;
@@ -209,16 +209,16 @@ public class SpawnPoint : MonoBehaviour
                     chunkPos = new Vector3(xOffset, 0, 0);
                 }
                 chunkContainer.transform.localPosition = chunkPos;
-                
+
                 // Farbe aus Chunk-Embedding
                 Color chunkColor = chunk.GetUnityColor();
                 if (chunkColor == Color.white || chunkColor == default)
                 {
                     chunkColor = EmbeddingToVoxel.GetColorFromEmbedding(chunkEmb);
                 }
-                
+
                 Debug.Log($"  Chunk {chunkIdx} '{chunk.section_name}': {chunkEmb.Length}-dim Embedding, Position: {chunkPos}");
-                
+
                 // === CHIFFRE-Algorithmus: Chunk-Embedding → Voxel-Struktur ===
                 GameObject voxelStructure = EmbeddingToVoxel.CreateStructure(
                     chunkEmb,
@@ -229,7 +229,7 @@ public class SpawnPoint : MonoBehaviour
                     voxelMaterial,
                     null  // CHIFFRE ignoriert uniqueId - nur Embedding zählt!
                 );
-                
+
                 if (voxelStructure != null)
                 {
                     int cubeCount = voxelStructure.transform.childCount;
@@ -239,19 +239,19 @@ public class SpawnPoint : MonoBehaviour
                     }
                     Debug.Log($"    → {cubeCount} Cubes erstellt");
                 }
-                
+
                 chunkContainers.Add(chunkContainer);
-                
+
                 // Kurze Pause für Animation
                 yield return new WaitForSeconds(0.05f);
             }
-            
+
             // === WIRE-VERBINDUNGEN zwischen Chunks ===
             if (chunkContainers.Count > 1)
             {
                 yield return SpawnChunkWires(chunkContainers, job.chunks);
             }
-            
+
             Debug.Log($"SpawnPoint CHIFFRE: Paper '{paperId}' fertig - {chunkContainers.Count} Chunks, {_spawnedVoxels.Count} Voxels");
         }
         else
@@ -261,9 +261,9 @@ public class SpawnPoint : MonoBehaviour
             if (emb != null && emb.Length >= 768)
             {
                 Debug.Log($"SpawnPoint CHIFFRE: Paper '{paperId}' ohne Chunks, nutze Paper-Embedding");
-                
+
                 Color paperColor = EmbeddingToVoxel.GetColorFromEmbedding(emb);
-                
+
                 GameObject voxelStructure = EmbeddingToVoxel.CreateStructure(
                     emb,
                     _currentStructure.transform,
@@ -273,7 +273,7 @@ public class SpawnPoint : MonoBehaviour
                     voxelMaterial,
                     null
                 );
-                
+
                 if (voxelStructure != null)
                 {
                     int cubeCount = voxelStructure.transform.childCount;
@@ -290,10 +290,10 @@ public class SpawnPoint : MonoBehaviour
                 yield return SpawnMoleculeChunksLegacy(job);
             }
         }
-        
+
         yield return null;
     }
-    
+
     /// <summary>
     /// Zeichnet Wire-Verbindungen zwischen Chunk-Containern
     /// Zeigt an, welche Chunks zu einem Paper gehören
@@ -301,40 +301,40 @@ public class SpawnPoint : MonoBehaviour
     private IEnumerator SpawnChunkWires(List<GameObject> chunkContainers, ChunkData[] chunks)
     {
         if (chunkContainers.Count < 2) yield break;
-        
+
         Debug.Log($"  Zeichne {chunkContainers.Count - 1} Wire-Verbindungen...");
-        
+
         // Wire-Container
         GameObject wireContainer = new GameObject("Wires");
         wireContainer.transform.SetParent(_currentStructure.transform);
         wireContainer.transform.localPosition = Vector3.zero;
-        
+
         for (int i = 0; i < chunkContainers.Count - 1; i++)
         {
             Vector3 fromPos = chunkContainers[i].transform.localPosition;
             Vector3 toPos = chunkContainers[i + 1].transform.localPosition;
-            
+
             // Farben der verbundenen Chunks
             Color fromColor = i < chunks.Length ? chunks[i].GetUnityColor() : Color.white;
             Color toColor = (i + 1) < chunks.Length ? chunks[i + 1].GetUnityColor() : Color.white;
-            
+
             // Wire als LineRenderer
             GameObject wireObj = new GameObject($"Wire_{i}_to_{i + 1}");
             wireObj.transform.SetParent(wireContainer.transform);
             wireObj.transform.localPosition = Vector3.zero;
-            
+
             LineRenderer lr = wireObj.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
             lr.positionCount = 2;
             lr.SetPosition(0, fromPos);
             lr.SetPosition(1, toPos);
-            
+
             // Wire-Styling
             lr.startWidth = 0.3f;
             lr.endWidth = 0.3f;
             lr.startColor = fromColor;
             lr.endColor = toColor;
-            
+
             // Material (einfaches Unlit)
             if (voxelMaterial != null)
             {
@@ -347,30 +347,30 @@ public class SpawnPoint : MonoBehaviour
                 lr.material = new Material(Shader.Find("Sprites/Default"));
             }
         }
-        
+
         // Zusätzlich: connects_to Verbindungen (falls definiert)
         for (int i = 0; i < chunks.Length && i < chunkContainers.Count; i++)
         {
             if (chunks[i].connects_to == null || chunks[i].connects_to.Length == 0) continue;
-            
+
             Vector3 fromPos = chunkContainers[i].transform.localPosition;
             Color fromColor = chunks[i].GetUnityColor();
-            
+
             foreach (int targetId in chunks[i].connects_to)
             {
                 // Finde Ziel-Chunk
                 int targetIdx = System.Array.FindIndex(chunks, c => c.chunk_id == targetId);
                 if (targetIdx < 0 || targetIdx >= chunkContainers.Count) continue;
                 if (targetIdx == i + 1) continue;  // Schon als sequentielle Verbindung gezeichnet
-                
+
                 Vector3 toPos = chunkContainers[targetIdx].transform.localPosition;
                 Color toColor = chunks[targetIdx].GetUnityColor();
-                
+
                 // Spezielle Verbindung (gestrichelt wäre schön, aber LineRenderer kann das nicht einfach)
                 GameObject wireObj = new GameObject($"Wire_{i}_to_{targetId}_special");
                 wireObj.transform.SetParent(wireContainer.transform);
                 wireObj.transform.localPosition = Vector3.zero;
-                
+
                 LineRenderer lr = wireObj.AddComponent<LineRenderer>();
                 lr.useWorldSpace = false;
                 lr.positionCount = 2;
@@ -383,10 +383,10 @@ public class SpawnPoint : MonoBehaviour
                 lr.material = new Material(Shader.Find("Sprites/Default"));
             }
         }
-        
+
         yield return null;
     }
-    
+
     /// <summary>
     /// Legacy-Methode: Ein Cube pro Chunk (Fallback wenn kein Embedding)
     /// </summary>
