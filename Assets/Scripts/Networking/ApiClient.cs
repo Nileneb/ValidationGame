@@ -517,14 +517,29 @@ public class ApiClient : MonoBehaviour
             if (request.result == UnityWebRequest.Result.Success)
             {
                 string json = request.downloadHandler.text;
+                if (logRequests) Debug.Log($"ApiClient: Jobs response: {json.Substring(0, Mathf.Min(200, json.Length))}...");
+                
                 try
                 {
-                    JobsResponse response = JsonUtility.FromJson<JobsResponse>(json);
-                    callback?.Invoke(response?.jobs ?? new List<VoxelData>());
+                    // Server returns single job: {"status": "assigned", "job": {...}}
+                    SingleJobResponse response = JsonUtility.FromJson<SingleJobResponse>(json);
+                    
+                    List<VoxelData> jobs = new List<VoxelData>();
+                    if (response != null && response.status == "assigned" && response.job != null)
+                    {
+                        jobs.Add(response.job);
+                        if (logRequests) Debug.Log($"ApiClient: Got job for paper: {response.job.paper_id}");
+                    }
+                    else if (response != null && response.status == "no_jobs")
+                    {
+                        if (logRequests) Debug.Log("ApiClient: No jobs available");
+                    }
+                    
+                    callback?.Invoke(jobs);
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"ApiClient: JSON Parse Error: {e.Message}");
+                    Debug.LogError($"ApiClient: JSON Parse Error: {e.Message}\nJSON: {json.Substring(0, Mathf.Min(500, json.Length))}");
                     callback?.Invoke(new List<VoxelData>());
                 }
             }
@@ -604,7 +619,18 @@ public class ApiClient : MonoBehaviour
 [Serializable]
 public class JobsResponse
 {
-    public List<VoxelData> jobs;
+    public List<VoxelData> jobs;  // For batch endpoint (if used)
+}
+
+/// <summary>
+/// Response from GET /api/jobs/next - returns single job
+/// </summary>
+[Serializable]
+public class SingleJobResponse
+{
+    public string status;      // "assigned" | "no_jobs" | "error"
+    public VoxelData job;      // The job data (null if no_jobs)
+    public string device_id;
 }
 
 [Serializable]
