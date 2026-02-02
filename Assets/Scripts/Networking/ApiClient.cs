@@ -1,6 +1,3 @@
-// Assets/Scripts/Networking/ApiClient.cs
-// REST API Client für Kommunikation mit dem MCP-Server
-// Erweitert nach DATAMODEL.md Contract
 
 using UnityEngine;
 using UnityEngine.Networking;
@@ -52,7 +49,7 @@ public class ApiClient : MonoBehaviour
     {
         InitializeDeviceId();
         StartCoroutine(RegisterDevice());
-        
+
         if (autoConnectSSE)
         {
             ConnectSSE();
@@ -100,11 +97,11 @@ public class ApiClient : MonoBehaviour
                 try
                 {
                     var response = JsonUtility.FromJson<ActiveRuleResponse>(json);
-                    
+
                     if (response?.rule != null)
                     {
                         response.rule.DecodeAll();
-                        
+
                         if (ruleMatcher != null)
                         {
                             ruleMatcher.SetActiveRule(response.rule, response.threshold, response.question);
@@ -764,4 +761,66 @@ public class ColoredVoxelData
     public float[][] voxels;
     public bool colored;
     public VoxelStatsData stats;
+}
+
+/// <summary>
+/// Farbe für VoxelData (RGB 0-1)
+/// </summary>
+[Serializable]
+public class VoxelColor
+{
+    public float r;
+    public float g;
+    public float b;
+
+    public VoxelColor() { r = 0.5f; g = 0.5f; b = 0.5f; }
+    public VoxelColor(float r, float g, float b) { this.r = r; this.g = g; this.b = b; }
+    public Color ToUnityColor() => new Color(r, g, b);
+}
+
+/// <summary>
+/// Legacy VoxelData für Paper-Jobs (backward compatibility)
+/// Wrapper für GET /api/jobs/next Response
+/// </summary>
+[Serializable]
+public class VoxelData
+{
+    public string job_id;
+    public string paper_id;
+    public string section;
+    public string section_id;
+    public string section_text;
+    public string embedding_b64;
+    public string rule_id;  // Optional: Zugehörige Rule
+    public VoxelColor color; // Optional: Farbe
+
+    // Runtime decoded
+    [NonSerialized] public float[] embedding;
+    [NonSerialized] public float[] section_embedding;
+    [NonSerialized] public float[] pos_embedding;  // Alias für rule matching
+
+    /// <summary>
+    /// Dekodiert Base64 Embedding
+    /// </summary>
+    public void DecodeData()
+    {
+        if (!string.IsNullOrEmpty(embedding_b64))
+        {
+            try
+            {
+                byte[] bytes = System.Convert.FromBase64String(embedding_b64);
+                embedding = new float[bytes.Length / 4];
+                System.Buffer.BlockCopy(bytes, 0, embedding, 0, bytes.Length);
+                section_embedding = embedding; // Alias
+                pos_embedding = embedding;     // Alias
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"VoxelData.DecodeData: Base64 error: {e.Message}");
+                embedding = new float[768];
+                section_embedding = embedding;
+                pos_embedding = embedding;
+            }
+        }
+    }
 }

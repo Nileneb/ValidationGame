@@ -523,6 +523,7 @@ MonoBehaviour:
   cubeSize: 0.5
   spawnDistance: 50
   moveSpeed: 5
+  voxelThreshold: 0.3
   laneDistance: 3
   laneCount: 3
   player: {fileID: 3909435548160090199, guid: 5d0df337882051042998d388bf71ac28, type: 3}
@@ -538,13 +539,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f1bfc440d65e166458e77e3c5f437178, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ApiClient
-  serverUrl: http://127.0.0.1:8089
+  serverUrl: http://192.168.178.11:8089
   deviceId: 
   autoConnectSSE: 1
   sseReconnectDelay: 5
   sseHeartbeatTimeout: 30
   voxelBuilder: {fileID: 712933639}
   infoPanel: {fileID: 1076401127}
+  ruleMatcher: {fileID: 712933635}
   logRequests: 1
 --- !u!114 &712933635
 MonoBehaviour:
@@ -558,8 +560,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 30081a6769da18346b465e470247d849, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RuleMatcher
-  matchPoints: 100
-  missPoints: 10
+  collectPoints: 10
+  skipPoints: 5
 --- !u!114 &712933636
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1549,7 +1551,7 @@ MonoBehaviour:
   voxelMaterial: {fileID: 2100000, guid: c0201358304b3f04c91161f1acb6902b, type: 2}
   cubeSize: 0.3
   rotationSpeed: 20
-  voxelThreshold: 0.3
+  voxelCount: 30
   targetImage: {fileID: 2028988307}
   renderTextureSize: 512
   previewPosition: {x: 100, y: 100, z: 100}
