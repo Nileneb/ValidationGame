@@ -101,4 +101,22 @@ public class UIManager : MonoBehaviour
             activeRuleText.text = $"Suche: {ruleQuestion}";
         }
     }
+
+    /// <summary>
+    /// Zeigt Game Over Screen
+    /// </summary>
+    public void ShowGameOver(int finalScore, int matchesFound)
+    {
+        Debug.Log($"UIManager: GAME OVER - Score: {finalScore}, Matches: {matchesFound}");
+        
+        // Feedback Text für Game Over nutzen (oder eigenes Panel)
+        if (feedbackText != null)
+        {
+            feedbackText.text = $"GAME OVER\nPunkte: {finalScore}\nMatches: {matchesFound}";
+            feedbackText.gameObject.SetActive(true);
+            // Nicht ausblenden - bleibt sichtbar
+        }
+        
+        // TODO: Eigenes Game Over Panel mit Restart-Button
+    }
 }
