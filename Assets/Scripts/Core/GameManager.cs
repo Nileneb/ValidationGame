@@ -322,6 +322,26 @@ public class GameManager : MonoBehaviour
         }));
     }
 
+    /// <summary>
+    /// Wird aufgerufen wenn der Spieler stirbt
+    /// </summary>
+    public void OnPlayerDeath()
+    {
+        Debug.Log("GameManager: GAME OVER - Spieler gestorben!");
+        
+        // Pending Results noch senden
+        SubmitPendingResults();
+        
+        // UI aktualisieren
+        if (UIManager.Instance != null)
+        {
+            UIManager.Instance.ShowGameOver(totalPoints, matchesFound);
+        }
+        
+        // Optional: Spiel pausieren
+        // Time.timeScale = 0f;
+    }
+
     // Public Getter
     public int GetTotalPoints() => totalPoints;
     public int GetMatchesFound() => matchesFound;

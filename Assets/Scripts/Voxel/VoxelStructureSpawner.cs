@@ -255,6 +255,10 @@ public class VoxelStructureSpawner : MonoBehaviour
             CollectiblePaper collectible = structure.AddComponent<CollectiblePaper>();
             collectible.Initialize(data);
 
+            // Health Component für Combat
+            PaperHealth health = structure.AddComponent<PaperHealth>();
+            // Default values werden in PaperHealth gesetzt
+
             // Bewegung hinzufügen
             VoxelMover mover = structure.AddComponent<VoxelMover>();
             mover.moveSpeed = -moveSpeed;
