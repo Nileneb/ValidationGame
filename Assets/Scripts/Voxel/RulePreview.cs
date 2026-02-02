@@ -80,7 +80,7 @@ public class RulePreview : MonoBehaviour
     }
 
     /// <summary>
-    /// Zeigt eine Regel als Voxel-Preview an
+    /// Zeigt eine Regel als Voxel-Preview an (MIT CACHING!)
     /// </summary>
     public void ShowRule(string ruleId, float[] posEmbedding)
     {
@@ -92,8 +92,35 @@ public class RulePreview : MonoBehaviour
 
         currentRuleId = ruleId;
 
+        // CACHE NUTZEN wenn verfügbar!
+        if (RulePrefabCache.Instance != null)
+        {
+            GameObject cached = RulePrefabCache.Instance.InstantiateRule(ruleId, posEmbedding, previewContainer.transform);
+            if (cached != null)
+            {
+                cached.transform.localPosition = Vector3.zero;
+                // Alle Kinder zur voxelCubes Liste hinzufügen für Cleanup
+                foreach (Transform child in cached.transform)
+                {
+                    voxelCubes.Add(child.gameObject);
+                }
+                Debug.Log($"RulePreview: Regel '{ruleId}' aus CACHE geladen");
+                return;
+            }
+        }
+
+        // FALLBACK: Direkt generieren (wenn kein Cache)
+        GenerateVoxelsDirectly(ruleId, posEmbedding);
+    }
+
+    /// <summary>
+    /// Generiert Voxels direkt ohne Cache (Fallback)
+    /// </summary>
+    private void GenerateVoxelsDirectly(string ruleId, float[] posEmbedding)
+    {
         // Embedding zu Voxel konvertieren (Pyramiden-Algorithmus)
-        List<VoxelPosition> positions = EmbeddingToVoxel.ConvertToPositions(posEmbedding, voxelCount);
+        // Form haengt NUR vom Embedding ab, nicht von ruleId!
+        List<VoxelPosition> positions = EmbeddingToVoxel.ConvertToVoxelPositions(posEmbedding);
         positions = EmbeddingToVoxel.CenterPositions(positions);
 
         // Farbe aus Embedding

@@ -1,6 +1,6 @@
 // Scripts/Voxel/CollectiblePaper.cs
 // Komponente für einsammelbare Paper-Voxel-Strukturen
-// Triggert GameManager bei Kollision mit Spieler
+// NEUE ARCHITEKTUR: PlayerMatcher auf dem Player übernimmt das Matching!
 
 using UnityEngine;
 
@@ -34,6 +34,14 @@ public class CollectiblePaper : MonoBehaviour
         jobId = data.job_id;
     }
 
+    /// <summary>
+    /// Getter für VoxelData (für PlayerMatcher)
+    /// </summary>
+    public VoxelData GetVoxelData()
+    {
+        return jobData;
+    }
+
     void OnTriggerEnter(Collider other)
     {
         Debug.Log($"CollectiblePaper: Trigger mit {other.name}, Tag: {other.tag}");
@@ -42,13 +50,27 @@ public class CollectiblePaper : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             Debug.Log("CollectiblePaper: PLAYER COLLISION - Collecting!");
+
+            // NEUE ARCHITEKTUR: PlayerMatcher auf Player übernimmt das Matching
+            PlayerMatcher matcher = other.GetComponent<PlayerMatcher>();
+            if (matcher != null)
+            {
+                // PlayerMatcher übernimmt alles (inkl. Destroy)
+                matcher.OnCollectPaper(jobData, gameObject);
+                return; // Nicht weitermachen, PlayerMatcher zerstört das Objekt
+            }
+
+            // LEGACY: Falls kein PlayerMatcher, alte Methode nutzen
             Collect(other.gameObject);
         }
     }
 
+    /// <summary>
+    /// LEGACY: Sammelt das Paper ein und informiert GameManager
+    /// </summary>
     void Collect(GameObject player)
     {
-        // GameManager über Einsammeln informieren
+        // GameManager über Einsammeln informieren (alte Methode)
         if (GameManager.Instance != null)
         {
             GameManager.Instance.OnPaperCollected(this);

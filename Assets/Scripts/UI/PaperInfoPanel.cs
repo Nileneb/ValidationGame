@@ -221,8 +221,8 @@ public class PaperInfoPanel : MonoBehaviour
             // Rule Name
             texts[0].text = rule.rule_name ?? rule.rule_id;
 
-            // Status (✓ oder ✗)
-            texts[1].text = rule.passed ? "✓" : "✗";
+            // Status (YES oder NO)
+            texts[1].text = rule.passed ? "YES" : "NO";
             texts[1].color = rule.passed ? new Color(0.3f, 0.8f, 0.3f) : new Color(0.8f, 0.3f, 0.3f);
         }
 
@@ -245,7 +245,7 @@ public class PaperInfoPanel : MonoBehaviour
         text.fontSize = 14;
         text.alignment = TextAlignmentOptions.Left;
 
-        string status = rule.passed ? "<color=#4CAF50>✓</color>" : "<color=#F44336>✗</color>";
+        string status = rule.passed ? "<color=#4CAF50>YES</color>" : "<color=#F44336>NO</color>";
         text.text = $"{status} {rule.rule_name ?? rule.rule_id}";
     }
 
