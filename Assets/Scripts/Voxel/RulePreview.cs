@@ -5,6 +5,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using ValidationGame.Data;
 
 public class RulePreview : MonoBehaviour
 {
@@ -92,8 +93,8 @@ public class RulePreview : MonoBehaviour
 
         currentRuleId = ruleId;
 
-        // Embedding zu Voxel konvertieren (Pyramiden-Algorithmus)
-        List<VoxelPosition> positions = EmbeddingToVoxel.ConvertToPositions(posEmbedding, voxelCount);
+        // Embedding zu Voxel konvertieren (threshold = 0.3)
+        List<VoxelPosition> positions = EmbeddingToVoxel.ConvertToPositions(posEmbedding, EmbeddingToVoxel.DefaultThreshold);
         positions = EmbeddingToVoxel.CenterPositions(positions);
 
         // Farbe aus Embedding

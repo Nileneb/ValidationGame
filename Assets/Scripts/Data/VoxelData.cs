@@ -34,9 +34,11 @@ public class VoxelData
     // Diese werden aus chunks[0] befüllt
     [NonSerialized] public float[] embedding;
     [NonSerialized] public float[] section_embedding;
+    [NonSerialized] public float[] pos_embedding;  // Alias für rule matching
     public int section_id;
     public string section;
     public string section_text;
+    public string rule_id;  // Optional: zugehörige Rule
     public VoxelColor color;
     
     // === Decoded Data ===
@@ -54,6 +56,7 @@ public class VoxelData
         if (!string.IsNullOrEmpty(paper_embedding_b64))
         {
             embedding = DecodeEmbedding(paper_embedding_b64);
+            pos_embedding = embedding;  // Alias für rule matching
         }
         
         // Ersten Chunk als "section" verwenden (für Legacy-Kompatibilität)
@@ -67,6 +70,11 @@ public class VoxelData
             if (!string.IsNullOrEmpty(firstChunk.embedding_b64))
             {
                 section_embedding = DecodeEmbedding(firstChunk.embedding_b64);
+                // pos_embedding vom ersten Chunk falls kein Paper-Embedding
+                if (pos_embedding == null)
+                {
+                    pos_embedding = section_embedding;
+                }
             }
             
             // Farbe aus Chunk

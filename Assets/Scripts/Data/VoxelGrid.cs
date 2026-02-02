@@ -104,6 +104,23 @@ namespace ValidationGame.Data
         }
 
         /// <summary>
+        /// Setzt einen Voxel-Wert an Position
+        /// </summary>
+        public void SetVoxel(int x, int y, int z, float value)
+        {
+            if (x < 0 || x >= SIZE_X || y < 0 || y >= SIZE_Y || z < 0 || z >= SIZE_Z)
+                return;
+            
+            rawGrid[x, y, z] = value;
+            
+            // Auch zur Voxel-Liste hinzufügen wenn über Threshold
+            if (value > 0)
+            {
+                voxels.Add(new Voxel(x, y, z, value));
+            }
+        }
+
+        /// <summary>
         /// Konvertiert zu JSON-kompatiblem Format nach DATAMODEL.md
         /// </summary>
         public VoxelGridJson ToJson()

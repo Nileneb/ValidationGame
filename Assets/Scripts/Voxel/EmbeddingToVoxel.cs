@@ -33,6 +33,32 @@ public static class EmbeddingToVoxel
     public const int TOTAL = GRID_X * GRID_Y * GRID_Z;  // 768
 
     /// <summary>
+    /// Default Threshold für Voxel-Sichtbarkeit
+    /// </summary>
+    public static float DefaultThreshold { get; set; } = 0.3f;
+
+    /// <summary>
+    /// Gibt Farbe basierend auf Chunk-Typ zurück (nach DATAMODEL.md Farbschema)
+    /// </summary>
+    public static Color GetChunkTypeColor(string chunkType)
+    {
+        if (string.IsNullOrEmpty(chunkType))
+            return new Color(0.5f, 0.5f, 0.5f);
+
+        switch (chunkType.ToLower())
+        {
+            case "abstract":     return new Color(0.2f, 0.6f, 0.9f);  // #3399E6
+            case "introduction": return new Color(0.3f, 0.8f, 0.3f);  // #4DCC4D
+            case "methods":      return new Color(0.9f, 0.7f, 0.2f);  // #E6B233
+            case "results":      return new Color(0.8f, 0.3f, 0.3f);  // #CC4D4D
+            case "discussion":   return new Color(0.7f, 0.4f, 0.9f);  // #B266E6
+            case "positive":     return new Color(0.2f, 0.9f, 0.3f);  // #33E64D
+            case "negative":     return new Color(0.9f, 0.2f, 0.2f);  // #E63333
+            default:             return new Color(0.5f, 0.5f, 0.5f);
+        }
+    }
+
+    /// <summary>
     /// Verstärkt visuelle Unterschiede zwischen Embeddings
     /// IDENTISCH zu Python enhance_visual_contrast()
     /// 

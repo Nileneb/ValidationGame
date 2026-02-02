@@ -101,10 +101,55 @@ public class RuleMatcher : MonoBehaviour
     }
 
     // ============================================================
+    // LEGACY SUPPORT - Für Kompatibilität mit GameManager
+    // ============================================================
+    
+    /// <summary>
+    /// Match-Ergebnis Struktur (für lokales Feedback)
+    /// </summary>
+    [System.Serializable]
+    public class MatchResult
+    {
+        public bool is_match;
+        public float similarity;
+        public int points;
+        public string feedback;
+    }
+
+    /// <summary>
+    /// Prüft Match zwischen Paper-Embedding und Rule
+    /// VEREINFACHT: Gibt immer positives Ergebnis, Server validiert später
+    /// </summary>
+    public MatchResult CheckMatch(VoxelData paperData, RuleData activeRule)
+    {
+        // Lokales Feedback - Server macht finale Validierung
+        return new MatchResult
+        {
+            is_match = true,  // Optimistisch - Server korrigiert
+            similarity = 0.75f,
+            points = collectPoints,
+            feedback = $"Eingesammelt! (+{collectPoints})"
+        };
+    }
+
+    /// <summary>
+    /// Prüft Match mit raw Embedding
+    /// </summary>
+    public MatchResult CheckMatch(float[] embedding, RuleData activeRule)
+    {
+        return new MatchResult
+        {
+            is_match = true,
+            similarity = 0.75f,
+            points = collectPoints,
+            feedback = $"Eingesammelt! (+{collectPoints})"
+        };
+    }
+
+    // ============================================================
     // ENTFERNT - Server macht das jetzt
     // ============================================================
     
     // CosineSimilarity() - ENTFERNT
-    // CheckMatch() - ENTFERNT
     // Kein lokales Embedding-Matching mehr!
 }
