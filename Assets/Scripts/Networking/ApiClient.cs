@@ -6,12 +6,17 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using ValidationGame.Data;
+using ValidationGame.Auth;
 
 public class ApiClient : MonoBehaviour
 {
     [Header("Server Settings")]
     [SerializeField] private string serverUrl = "http://127.0.0.1:8089";
     [SerializeField] private string deviceId;
+
+    [Header("Authentication")]
+    [Tooltip("Erfordert Login vor API-Calls")]
+    [SerializeField] private bool requireAuth = false;
 
     [Header("SSE Settings")]
     [SerializeField] private bool autoConnectSSE = true;
@@ -44,6 +49,11 @@ public class ApiClient : MonoBehaviour
 
     public bool IsSSEConnected => _sseConnected;
     public string DeviceId => deviceId;
+    
+    /// <summary>
+    /// Prüft ob authentifiziert (wenn Auth erforderlich)
+    /// </summary>
+    public bool IsAuthenticated => !requireAuth || (MoltbookAuth.Instance != null && MoltbookAuth.Instance.IsLoggedIn);
 
     void Start()
     {
@@ -69,6 +79,17 @@ public class ApiClient : MonoBehaviour
             }
         }
         if (logRequests) Debug.Log($"ApiClient: Device ID = {deviceId}");
+    }
+
+    /// <summary>
+    /// Fügt Auth-Header zu Request hinzu wenn eingeloggt
+    /// </summary>
+    private void AddAuthHeader(UnityWebRequest request)
+    {
+        if (MoltbookAuth.Instance != null && MoltbookAuth.Instance.IsLoggedIn)
+        {
+            request.SetRequestHeader("Authorization", $"Bearer {MoltbookAuth.Instance.SessionToken}");
+        }
     }
 
     // ============================================================
