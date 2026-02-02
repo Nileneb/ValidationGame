@@ -53,7 +53,7 @@ public class ApiClient : MonoBehaviour
     /// <summary>
     /// Prüft ob authentifiziert (wenn Auth erforderlich)
     /// </summary>
-    public bool IsAuthenticated => !requireAuth || (MoltbookAuth.Instance != null && MoltbookAuth.Instance.IsLoggedIn);
+    public bool IsAuthenticated => !requireAuth || (UnityAuthManager.Instance != null && UnityAuthManager.Instance.IsSignedIn);
 
     void Start()
     {
@@ -68,6 +68,15 @@ public class ApiClient : MonoBehaviour
 
     private void InitializeDeviceId()
     {
+        // Nutze Unity Auth PlayerId wenn verfügbar
+        if (UnityAuthManager.Instance != null && UnityAuthManager.Instance.IsSignedIn)
+        {
+            deviceId = UnityAuthManager.Instance.PlayerId;
+            if (logRequests) Debug.Log($"ApiClient: Using Unity Auth PlayerId = {deviceId}");
+            return;
+        }
+
+        // Fallback: lokale Device ID
         if (string.IsNullOrEmpty(deviceId))
         {
             deviceId = PlayerPrefs.GetString("device_id", "");
@@ -82,13 +91,13 @@ public class ApiClient : MonoBehaviour
     }
 
     /// <summary>
-    /// Fügt Auth-Header zu Request hinzu wenn eingeloggt
+    /// Fügt Auth-Header zu Request hinzu (Unity Auth Access Token)
     /// </summary>
     private void AddAuthHeader(UnityWebRequest request)
     {
-        if (MoltbookAuth.Instance != null && MoltbookAuth.Instance.IsLoggedIn)
+        if (UnityAuthManager.Instance != null && UnityAuthManager.Instance.IsSignedIn)
         {
-            request.SetRequestHeader("Authorization", $"Bearer {MoltbookAuth.Instance.SessionToken}");
+            request.SetRequestHeader("Authorization", $"Bearer {UnityAuthManager.Instance.AccessToken}");
         }
     }
 
