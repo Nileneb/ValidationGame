@@ -65,6 +65,11 @@ namespace ValidationGame.Data
         [NonSerialized] public GameObject rootObject;
 
         /// <summary>
+        /// Alias für Initialize (API-Kompatibilität)
+        /// </summary>
+        public void DecodeAll(float voxelThreshold = 0.3f) => Initialize(voxelThreshold);
+
+        /// <summary>
         /// Initialisiert Molecule und dekodiert alle Chunks
         /// </summary>
         public void Initialize(float voxelThreshold = 0.3f)
@@ -215,5 +220,17 @@ namespace ValidationGame.Data
         public string paper_id;
         public Chunk chunk;
         public int timeout_ms;
+    }
+
+    /// <summary>
+    /// Spieler-Aktion für POST /api/jobs/{job_id}/response
+    /// </summary>
+    [Serializable]
+    public class PlayerJobResponse
+    {
+        public string job_id;
+        public string device_id;
+        public string action;  // "collect" oder "skip"
+        public int response_time_ms;
     }
 }
