@@ -14,6 +14,8 @@ GameObject:
   - component: {fileID: 98514162490786198}
   - component: {fileID: 8767462468286320389}
   - component: {fileID: 5824415590830851948}
+  - component: {fileID: 368591953303692952}
+  - component: {fileID: 472304513436900871}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -29,13 +31,14 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 101202691296791051}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: 0.5, y: 0.5, z: -0.5, w: 0.5}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 3961412038156278799}
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 90, y: 90, z: 0}
 --- !u!33 &4421741950982104082
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -167,3 +170,78 @@ MonoBehaviour:
   gyroSensitivity: 2.5
   invertGyroHorizontal: 0
   invertGyroVertical: 0
+--- !u!114 &368591953303692952
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 101202691296791051}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cebd666934dd7fd499e74d9b739c285e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PaperHealth
+  maxHealth: 100
+  currentHealth: 0
+  contactDamageToPlayer: 10
+  contactDamageToSelf: 25
+  lowHealthColor: {r: 1, g: 0, b: 0, a: 1}
+  lowHealthThreshold: 0.3
+  flashOnDamage: 1
+  flashDuration: 0.1
+  deathEffectPrefab: {fileID: 0}
+  deathSound: {fileID: 0}
+--- !u!114 &472304513436900871
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 101202691296791051}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33a222082de43e9488dc8a7eae45af69, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerWeapon
+  projectilePrefab: {fileID: 7819619648318371261, guid: 5b59385b40596f34ea1f847d064001b2, type: 3}
+  firePoint: {fileID: 3961412038156278799}
+  projectileSpeed: 50
+  projectileLifetime: 3
+  fireRate: 5
+  autoFire: 1
+  muzzleFlashPrefab: {fileID: 0}
+  muzzleFlashDuration: 0.1
+  fireSound: {fileID: 0}
+  volume: 0.5
+--- !u!1 &7364793872260479356
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3961412038156278799}
+  m_Layer: 0
+  m_Name: FirePoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3961412038156278799
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7364793872260479356}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.5, y: -0.5, z: 0.5, w: 0.5}
+  m_LocalPosition: {x: 0.43257, y: 0.73659, z: -0.08312002}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3909435548160090199}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}

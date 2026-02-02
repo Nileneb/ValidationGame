@@ -539,7 +539,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f1bfc440d65e166458e77e3c5f437178, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ApiClient
-  serverUrl: http://192.168.178.11:8089
+  serverUrl: http://127.0.0.1:8089
   deviceId: 
   autoConnectSSE: 1
   sseReconnectDelay: 5
